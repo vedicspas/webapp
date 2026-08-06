@@ -1,0 +1,84 @@
+# Full stack: MariaDB + Fastify API + Next.js web.
+# Variables like ${AUTH_SECRET} are read from the repo-root .env file.
+#
+#   docker compose up -d --build
+#   docker compose run --rm api node apps/api/dist/db/migrate.js   # once
+#
+# For local development you can still run only the database in Docker
+# (docker compose up -d mariadb) and use `npm run dev` on the host.
+
+services:
+  mariadb:
+    image: mariadb:11.4
+    container_name: vedic-spas-db
+    restart: unless-stopped
+    environment:
+      MARIADB_ROOT_PASSWORD: rootpassword
+      MARIADB_DATABASE: vedic_spas
+      MARIADB_USER: vedic
+      MARIADB_PASSWORD: vedicpassword
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: vedic-spas-api
+    restart: unless-stopped
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    environment:
+      DATABASE_HOST: mariadb
+      DATABASE_PORT: "3306"
+      DATABASE_USER: vedic
+      DATABASE_PASSWORD: vedicpassword
+      DATABASE_NAME: vedic_spas
+      API_PORT: "4100"
+      API_ORIGIN: ${API_ORIGIN:-http://localhost:4100}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-generate-a-real-secret}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PLATFORM_FEE_BPS: ${PLATFORM_FEE_BPS:-750}
+      DEFAULT_BOOKING_FEE_MINOR: ${DEFAULT_BOOKING_FEE_MINOR:-500}
+    ports:
+      - "4100:4100"
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle at build time.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4100}
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY:-}
+        NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN: ${NEXT_PUBLIC_SHOPIFY_STORE_DOMAIN:-}
+        NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN: ${NEXT_PUBLIC_SHOPIFY_STOREFRONT_TOKEN:-}
+    container_name: vedic-spas-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      # Server-side fetches go through the compose network.
+      API_URL_INTERNAL: http://api:4100
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4100}
+      AUTH_SECRET: ${AUTH_SECRET:-change-me-generate-a-real-secret}
+      AUTH_TRUST_HOST: "true"
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN:-}
+      SHOPIFY_STOREFRONT_ACCESS_TOKEN: ${SHOPIFY_STOREFRONT_ACCESS_TOKEN:-}
+    ports:
+      - "3000:3000"
+
+volumes:
+  mariadb_data:

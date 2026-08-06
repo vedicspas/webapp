@@ -1,0 +1,48 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  --background: #fdfcf9;
+  --foreground: #1f2a24;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+
+  /* Ayurvedic palette: deep herbal green + warm turmeric accent */
+  --color-veda-50: #f2f7f3;
+  --color-veda-100: #dfece2;
+  --color-veda-200: #c1d9c8;
+  --color-veda-300: #96bea3;
+  --color-veda-400: #689e7b;
+  --color-veda-500: #47815e;
+  --color-veda-600: #35674a;
+  --color-veda-700: #2b533d;
+  --color-veda-800: #244332;
+  --color-veda-900: #1e372a;
+  --color-veda-950: #101f17;
+
+  --color-turmeric-50: #fdf9ec;
+  --color-turmeric-100: #f9efcb;
+  --color-turmeric-200: #f2dd93;
+  --color-turmeric-300: #ecc75b;
+  --color-turmeric-400: #e6b136;
+  --color-turmeric-500: #d9941f;
+  --color-turmeric-600: #c07218;
+  --color-turmeric-700: #a05317;
+  --color-turmeric-800: #834219;
+  --color-turmeric-900: #6c3718;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+/* Leaflet default marker fix inside Next bundling is handled in SpaMap.tsx */
+.leaflet-container {
+  font: inherit;
+}
