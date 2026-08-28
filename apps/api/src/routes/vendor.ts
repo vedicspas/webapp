@@ -89,7 +89,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       body.businessName,
     ]);
     await execute("UPDATE users SET role_id = ? WHERE id = ?", [
-      staticCache.roleByCode("vendor")!.id,
+      (await staticCache.requireRole("vendor")).id,
       request.user!.id,
     ]);
     return reply.code(201).send({ ok: true });

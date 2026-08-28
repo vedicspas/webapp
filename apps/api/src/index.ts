@@ -23,8 +23,13 @@ async function main() {
   // Load static lookup tables into memory before accepting traffic.
   await staticCache.reload();
   app.log.info(
-    `Static cache loaded: ${staticCache.cities.length} cities, ${staticCache.amenities.length} amenities, ${staticCache.treatmentCategories.length} categories`
+    `Static cache loaded: ${staticCache.roles.length} roles, ${staticCache.cities.length} cities, ${staticCache.amenities.length} amenities, ${staticCache.treatmentCategories.length} categories`
   );
+  if (staticCache.roles.length === 0) {
+    app.log.warn(
+      "Roles table is empty. Run db:seed (then restart, or the next request will reload the cache)."
+    );
+  }
 
   app.decorateRequest("user", null);
   app.addHook("preHandler", optionalAuth);

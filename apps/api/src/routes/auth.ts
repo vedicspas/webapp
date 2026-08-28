@@ -54,13 +54,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: "An account with this email already exists" });
     }
 
-    const roleId = staticCache.roleByCode("traveler")!.id;
+    const roleId = (await staticCache.requireRole("traveler")).id;
     const hash = await bcrypt.hash(body.password, 10);
     const result = await execute(
       "INSERT INTO users (role_id, email, password_hash, name, username) VALUES (?,?,?,?,?)",
       [roleId, body.email, hash, body.name, usernameFrom(body.email)]
     );
-    const row = (await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]))!;
+    const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
+    if (!row) {
+      return reply.code(500).send({ error: "Failed to load the created account" });
+    }
     return sessionPayload(row);
   });
 
@@ -77,7 +80,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Upsert used by the Auth.js Google provider on the web app.
-  app.post("/auth/oauth", async (request) => {
+  app.post("/auth/oauth", async (request, reply) => {
     const body = z
       .object({
         email: z.string().email(),
@@ -88,12 +91,15 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
     let row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [body.email]);
     if (!row) {
-      const roleId = staticCache.roleByCode("traveler")!.id;
+      const roleId = (await staticCache.requireRole("traveler")).id;
       const result = await execute(
         "INSERT INTO users (role_id, email, name, username, avatar_url) VALUES (?,?,?,?,?)",
         [roleId, body.email, body.name, usernameFrom(body.email), body.avatarUrl ?? null]
       );
-      row = (await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]))!;
+      row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
+    }
+    if (!row) {
+      return reply.code(500).send({ error: "Failed to load the created account" });
     }
     return sessionPayload(row);
   });
