@@ -20,7 +20,16 @@ function SignInForm() {
     const result = await signIn("credentials", { email, password, redirect: false });
     setBusy(false);
     if (result?.error) {
-      setError("Invalid email or password");
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
+      try {
+        const health = await fetch(`${apiUrl}/health`, { cache: "no-store" });
+        if (!health.ok) throw new Error("unhealthy");
+        setError("Invalid email or password");
+      } catch {
+        setError(
+          `Can't reach the API at ${apiUrl}. Start the database and API (docker compose up), then try again.`
+        );
+      }
     } else {
       router.push(params.get("callbackUrl") ?? "/");
       router.refresh();

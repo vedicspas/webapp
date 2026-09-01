@@ -88,6 +88,18 @@ services:
       DEFAULT_BOOKING_FEE_MINOR: ${DEFAULT_BOOKING_FEE_MINOR:-500}
     ports:
       - "4100:4100"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:4100/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   web:
     build:
@@ -102,13 +114,18 @@ services:
     container_name: vedic-spas-web
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     environment:
       # Server-side fetches go through the compose network.
       API_URL_INTERNAL: http://api:4100
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4100}
       AUTH_SECRET: ${AUTH_SECRET:-change-me-generate-a-real-secret}
       AUTH_TRUST_HOST: "true"
+      # Public URL in the browser. Without this, Auth.js builds redirects from the
+      # container hostname (e.g. http://3d00f6e0b327:3000/).
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      HOSTNAME: "0.0.0.0"
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       SHOPIFY_STORE_DOMAIN: ${SHOPIFY_STORE_DOMAIN:-}

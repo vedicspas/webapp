@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOutAndGo } from "@/lib/signOut";
 import { useApi } from "@/lib/useApi";
 
 export default function VendorRegisterPage() {
@@ -40,7 +40,7 @@ export default function VendorRegisterPage() {
           your first spa listing.
         </p>
         <button
-          onClick={() => signOut({ callbackUrl: "/auth/signin?callbackUrl=/vendor" })}
+          onClick={() => void signOutAndGo("/auth/signin?callbackUrl=/vendor")}
           className="mt-6 rounded-full bg-veda-700 px-6 py-2.5 font-medium text-white hover:bg-veda-600"
         >
           Sign in again
