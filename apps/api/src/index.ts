@@ -18,7 +18,14 @@ import { webhookRoutes } from "./routes/webhooks.js";
 async function main() {
   const app = Fastify({ logger: true });
 
-  await app.register(cors, { origin: [config.webOrigin], credentials: true });
+  await app.register(cors, {
+    origin: [config.webOrigin],
+    credentials: true,
+    // Default @fastify/cors methods omit PATCH, which blocks admin approve/suspend
+    // and other dashboard updates (browser preflight fails).
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  });
 
   // Load static lookup tables into memory before accepting traffic.
   await staticCache.reload();

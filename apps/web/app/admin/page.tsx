@@ -119,8 +119,12 @@ export default function AdminPage() {
   }, [token, isAdmin, load]);
 
   async function setVendorStatus(id: number, status: VendorStatus) {
-    await call(`/admin/vendors/${id}/status`, { method: "PATCH", body: { status } });
-    load();
+    try {
+      await call(`/admin/vendors/${id}/status`, { method: "PATCH", body: { status } });
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Update failed");
+    }
   }
 
   async function setSpaPublished(id: number, isPublished: boolean) {

@@ -48,6 +48,7 @@ export async function optionalAuth(request: FastifyRequest): Promise<void> {
 
 /** preHandler: rejects the request when no valid token is present. */
 export async function requireAuth(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.method === "OPTIONS") return;
   request.user = await readToken(request);
   if (!request.user) {
     reply.code(401).send({ error: "Authentication required" });
