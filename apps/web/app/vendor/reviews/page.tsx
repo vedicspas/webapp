@@ -6,6 +6,7 @@ import type { Review } from "@vedic/shared";
 import { useApi } from "@/lib/useApi";
 import { RatingStars } from "@/components/RatingStars";
 import { shortDate } from "@/lib/format";
+import { toast } from "@/stores/toastStore";
 
 type VendorReview = Review & { spaName: string };
 
@@ -30,7 +31,10 @@ export default function VendorReviewsPage() {
       await call(`/reviews/${reviewId}/response`, { method: "POST", body: { body: replyText } });
       setReplyFor(null);
       setReplyText("");
+      toast("Response saved.");
       load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not post response", "error");
     } finally {
       setBusy(false);
     }

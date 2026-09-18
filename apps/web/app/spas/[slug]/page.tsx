@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { RemotePhoto } from "@/components/RemotePhoto";
 import { ApiError, getQuestions, getReviews, getSpa, getSpaSlugs } from "@/lib/api";
 import { getSpaProducts } from "@/lib/shopify";
 import { RatingStars } from "@/components/RatingStars";
-import { WishlistButton } from "@/components/WishlistButton";
 import { AmenityList } from "@/components/spa/AmenityList";
+import { StayDetails } from "@/components/spa/StayDetails";
+import { PhotoGallery } from "@/components/spa/PhotoGallery";
 import { BookingWidget } from "@/components/spa/BookingWidget";
 import { ReviewsSection } from "@/components/spa/ReviewsSection";
 import { QASection } from "@/components/spa/QASection";
@@ -55,31 +55,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      {/* Photo gallery */}
-      <div className="relative flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-2xl">
-        {spa.photos.length > 0 ? (
-          spa.photos.map((photo) => (
-            <div
-              key={photo.id}
-              className="relative aspect-[4/3] w-[85%] shrink-0 snap-center overflow-hidden rounded-2xl sm:w-[45%] lg:w-[32%]"
-            >
-              <RemotePhoto
-                src={photo.url}
-                alt={photo.title || photo.alt || spa.name}
-                className="h-full w-full object-cover"
-              />
-              {photo.title || photo.alt ? (
-                <p className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 pb-2.5 pt-8 text-sm font-medium text-white">
-                  {photo.title || photo.alt}
-                </p>
-              ) : null}
-            </div>
-          ))
-        ) : (
-          <div className="aspect-[4/3] w-full rounded-2xl bg-veda-100" />
-        )}
-        <WishlistButton spaId={spa.id} className="absolute right-3 top-3 z-10" />
-      </div>
+      <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0">
@@ -98,6 +74,8 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
 
           <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
           <AmenityList amenityIds={spa.amenityIds} />
+
+          <StayDetails spa={spa} />
 
           <h2 className="mt-8 text-lg font-semibold text-veda-900">Opening hours</h2>
           <ul className="mt-2 grid max-w-md grid-cols-1 gap-1 text-sm sm:grid-cols-2">

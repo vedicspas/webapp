@@ -7,6 +7,7 @@ import { useSession } from "next-auth/react";
 import type { Paginated, Review } from "@vedic/shared";
 import { shortDate } from "@/lib/format";
 import { RatingStars } from "@/components/RatingStars";
+import { toast } from "@/stores/toastStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -19,7 +20,6 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Pagin
   const [rating, setRating] = useState(5);
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   async function loadMore() {
@@ -33,7 +33,6 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Pagin
   async function submit() {
     if (!session?.apiToken) return;
     setSubmitting(true);
-    setError(null);
     try {
       const res = await fetch(`${API_URL}/spas/${slug}/reviews`, {
         method: "POST",
@@ -50,8 +49,9 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Pagin
       setShowForm(false);
       setTitle("");
       setBody("");
+      toast("Review posted.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit review");
+      toast(err instanceof Error ? err.message : "Could not submit review", "error");
     } finally {
       setSubmitting(false);
     }
@@ -104,7 +104,6 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Pagin
             rows={4}
             className="w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
           />
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <button
             onClick={submit}
             disabled={submitting || title.length < 3 || body.length < 10}

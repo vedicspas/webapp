@@ -4,8 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApi } from "@/lib/useApi";
 import { useMetaStore } from "@/stores/metaStore";
-import { PAYMENT_MODE_LABELS, WEEKDAYS } from "@/lib/format";
+import { PAYMENT_MODE_LABELS, WEEKDAYS, ON_REQUEST_LABELS } from "@/lib/format";
 import { RemotePhoto } from "@/components/RemotePhoto";
+import { DollarInput, PostfixInput } from "@/components/AffixedInput";
+import { TagInput } from "@/components/TagInput";
+import { toast } from "@/stores/toastStore";
+import type { OnRequestFlag } from "@vedic/shared";
 
 interface VendorTreatment {
   id?: number;
@@ -82,6 +86,12 @@ interface SpaForm {
   bookingFeeMinor: number | null;
   currencyCode: string;
   isPublished: boolean;
+  languages: string[];
+  dietaryOptions: string[];
+  airportPickup: OnRequestFlag | null;
+  accommodationTypeId: number | null;
+  accessibility: string;
+  familyAccommodation: OnRequestFlag | null;
 }
 
 const EMPTY: SpaForm = {
@@ -102,6 +112,12 @@ const EMPTY: SpaForm = {
   bookingFeeMinor: 500,
   currencyCode: "USD",
   isPublished: false,
+  languages: [],
+  dietaryOptions: [],
+  airportPickup: null,
+  accommodationTypeId: null,
+  accessibility: "",
+  familyAccommodation: null,
 };
 
 const input = "w-full rounded-lg border border-veda-200 px-3 py-2 text-sm";
@@ -124,7 +140,6 @@ export default function VendorSpaEditPage() {
   const [hours, setHours] = useState(
     Array.from({ length: 7 }, (_, weekday) => ({ weekday, openTime: "09:00", closeTime: "18:00", closed: false }))
   );
-  const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(isNew);
 
@@ -140,15 +155,47 @@ export default function VendorSpaEditPage() {
   }
 
   const load = useCallback(async () => {
-    const data = await call<
-      SpaForm & {
-        slug?: string;
-        treatments: VendorTreatment[];
-        photos: VendorPhoto[];
-        openHours: { weekday: number; openTime: string; closeTime: string }[];
-      }
-    >(`/vendor/spas/${id}`);
-    setForm({ ...data, depositBps: data.depositBps ?? 2000, bookingFeeMinor: data.bookingFeeMinor ?? 500 });
+    const data = await call<{
+      slug?: string;
+      treatments: VendorTreatment[];
+      photos: VendorPhoto[];
+      openHours: { weekday: number; openTime: string; closeTime: string }[];
+      languages?: { id: number; name: string }[];
+      dietaryOptions?: { id: number; name: string }[];
+      accommodationTypeId?: number | null;
+      airportPickup?: OnRequestFlag | null;
+      familyAccommodation?: OnRequestFlag | null;
+      accessibility?: string | null;
+      name: string;
+      shortDescription: string;
+      description: string;
+      addressLine: string;
+      postalCode: string;
+      cityId: number;
+      lat: number;
+      lng: number;
+      phone: string | null;
+      email: string | null;
+      website: string | null;
+      shopifyCollectionHandle: string | null;
+      paymentModeCode: SpaForm["paymentModeCode"];
+      depositBps: number | null;
+      bookingFeeMinor: number | null;
+      currencyCode: string;
+      isPublished: boolean;
+    }>(`/vendor/spas/${id}`);
+    setForm({
+      ...EMPTY,
+      ...data,
+      depositBps: data.depositBps ?? 2000,
+      bookingFeeMinor: data.bookingFeeMinor ?? 500,
+      languages: (data.languages ?? []).map((l) => l.name),
+      dietaryOptions: (data.dietaryOptions ?? []).map((d) => d.name),
+      airportPickup: data.airportPickup ?? null,
+      accommodationTypeId: data.accommodationTypeId ?? null,
+      accessibility: data.accessibility ?? "",
+      familyAccommodation: data.familyAccommodation ?? null,
+    });
     setListingSlug(data.slug ?? null);
     setTreatments(data.treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })));
     setPhotos(
@@ -178,7 +225,6 @@ export default function VendorSpaEditPage() {
 
   async function save() {
     setBusy(true);
-    setMessage(null);
     try {
       const body = {
         ...form,
@@ -188,9 +234,16 @@ export default function VendorSpaEditPage() {
         phone: form.phone || null,
         email: form.email || null,
         website: form.website || null,
+        languages: form.languages,
+        dietaryOptions: form.dietaryOptions,
+        airportPickup: form.airportPickup,
+        accommodationTypeId: form.accommodationTypeId,
+        accessibility: form.accessibility.trim() || null,
+        familyAccommodation: form.familyAccommodation,
       };
       if (isNew) {
         const created = await call<{ id: number }>("/vendor/spas", { method: "POST", body });
+        toast("Listing created.");
         router.push(`/vendor/spas/${created.id}`);
         return;
       }
@@ -199,10 +252,10 @@ export default function VendorSpaEditPage() {
         method: "PUT",
         body: hours.filter((h) => !h.closed).map(({ weekday, openTime, closeTime }) => ({ weekday, openTime, closeTime })),
       });
-      setMessage("Saved.");
+      toast("Saved.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Save failed");
+      toast(err instanceof Error ? err.message : "Save failed", "error");
     } finally {
       setBusy(false);
     }
@@ -231,7 +284,6 @@ export default function VendorSpaEditPage() {
   async function uploadPending() {
     if (pendingPhotos.length === 0) return;
     setPhotoBusy(true);
-    setMessage(null);
     try {
       const uploaded: VendorPhoto[] = [];
       for (const item of pendingPhotos) {
@@ -254,13 +306,13 @@ export default function VendorSpaEditPage() {
       pendingPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
       setPendingPhotos([]);
       setPhotos((list) => [...list, ...uploaded]);
-      setMessage(
+      toast(
         uploaded.length === 1
           ? "Photo uploaded. The first photo is used on search cards."
           : `${uploaded.length} photos uploaded. The first photo is used on search cards.`
       );
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not upload photos");
+      toast(err instanceof Error ? err.message : "Could not upload photos", "error");
     } finally {
       setPhotoBusy(false);
     }
@@ -272,8 +324,9 @@ export default function VendorSpaEditPage() {
       setPhotos((list) =>
         list.map((p) => (p.id === photoId ? { ...p, title, alt: title } : p))
       );
+      toast("Photo title saved.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not update title");
+      toast(err instanceof Error ? err.message : "Could not update title", "error");
     }
   }
 
@@ -281,8 +334,9 @@ export default function VendorSpaEditPage() {
     try {
       await call(`/vendor/photos/${photoId}`, { method: "DELETE" });
       setPhotos((list) => list.filter((p) => p.id !== photoId));
+      toast("Photo removed.");
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not remove photo");
+      toast(err instanceof Error ? err.message : "Could not remove photo", "error");
     }
   }
 
@@ -290,21 +344,21 @@ export default function VendorSpaEditPage() {
     const last = treatments[treatments.length - 1];
     if (last && !treatmentFinished(last)) {
       const missing = treatmentReadyToSave(last);
-      setMessage(
+      toast(
         missing
           ? `Finish the treatment above first. ${missing}`
-          : "Save the treatment above before adding another."
+          : "Save the treatment above before adding another.",
+        "error"
       );
       return;
     }
-    setMessage(null);
     setTreatments((list) => [...list, blankTreatment(meta.treatmentCategories[0]?.id ?? 1)]);
   }
 
   async function saveTreatment(t: VendorTreatment, index: number) {
     const missing = treatmentReadyToSave(t);
     if (missing) {
-      setMessage(missing);
+      toast(missing, "error");
       return;
     }
     try {
@@ -320,10 +374,10 @@ export default function VendorSpaEditPage() {
         const created = await call<{ id: number }>(`/vendor/spas/${id}/treatments`, { method: "POST", body });
         setTreatments((list) => list.map((x, i) => (i === index ? { ...x, id: created.id } : x)));
       }
-      setMessage("Treatment saved.");
+      toast("Treatment saved.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Treatment save failed");
+      toast(err instanceof Error ? err.message : "Treatment save failed", "error");
     }
   }
 
@@ -336,16 +390,16 @@ export default function VendorSpaEditPage() {
 
     if (!t.id) {
       setTreatments((list) => list.filter((_, i) => i !== index));
-      setMessage("Treatment discarded.");
+      toast("Treatment discarded.");
       return;
     }
     try {
       await call(`/vendor/treatments/${t.id}`, { method: "DELETE" });
       setTreatments((list) => list.filter((_, i) => i !== index));
-      setMessage("Treatment deleted.");
+      toast("Treatment deleted.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Could not delete treatment");
+      toast(err instanceof Error ? err.message : "Could not delete treatment", "error");
     }
   }
 
@@ -436,6 +490,84 @@ export default function VendorSpaEditPage() {
             <input className={input} value={form.email ?? ""} onChange={(e) => set({ email: e.target.value })} />
           </label>
         </div>
+      </section>
+
+      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Stay &amp; access</h2>
+        <p className="text-sm text-foreground/60">Optional. Shown on your public listing when filled in.</p>
+        <label className={label}>
+          Languages spoken
+          <TagInput
+            values={form.languages}
+            onChange={(languages) => set({ languages })}
+            suggestions={(meta.languages ?? []).map((l) => l.name)}
+            placeholder="Type a language"
+          />
+        </label>
+        <label className={label}>
+          Airport pickup
+          <select
+            className={input}
+            value={form.airportPickup ?? ""}
+            onChange={(e) =>
+              set({ airportPickup: (e.target.value || null) as OnRequestFlag | null })
+            }
+          >
+            <option value="">Not specified</option>
+            <option value="on_request">{ON_REQUEST_LABELS.on_request}</option>
+            <option value="not_available">{ON_REQUEST_LABELS.not_available}</option>
+          </select>
+        </label>
+        <label className={label}>
+          Accommodation type
+          <select
+            className={input}
+            value={form.accommodationTypeId ?? ""}
+            onChange={(e) =>
+              set({ accommodationTypeId: e.target.value ? Number(e.target.value) : null })
+            }
+          >
+            <option value="">Not specified</option>
+            {(meta.accommodationTypes ?? []).map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={label}>
+          Dietary options
+          <TagInput
+            values={form.dietaryOptions}
+            onChange={(dietaryOptions) => set({ dietaryOptions })}
+            suggestions={(meta.dietaryOptions ?? []).map((d) => d.name)}
+            placeholder="Type a diet"
+          />
+        </label>
+        <label className={label}>
+          Accessibility
+          <textarea
+            className={input}
+            rows={3}
+            value={form.accessibility}
+            onChange={(e) => set({ accessibility: e.target.value })}
+            placeholder="Wheelchair access, ground-floor rooms, grab bars…"
+          />
+        </label>
+        <label className={label}>
+          Family or companion accommodation
+          <select
+            className={input}
+            value={form.familyAccommodation ?? ""}
+            onChange={(e) =>
+              set({ familyAccommodation: (e.target.value || null) as OnRequestFlag | null })
+            }
+          >
+            <option value="">Not specified</option>
+            <option value="on_request">{ON_REQUEST_LABELS.on_request}</option>
+            <option value="not_available">{ON_REQUEST_LABELS.not_available}</option>
+          </select>
+        </label>
       </section>
 
       {!isNew ? (
@@ -581,13 +713,11 @@ export default function VendorSpaEditPage() {
         ) : null}
         {form.paymentModeCode === "booking_fee" ? (
           <label className={label}>
-            Booking fee (in cents, e.g. 500 = $5)
-            <input
-              className={input}
-              type="number"
-              min={100}
-              value={form.bookingFeeMinor ?? 500}
-              onChange={(e) => set({ bookingFeeMinor: Number(e.target.value) })}
+            Booking fee
+            <DollarInput
+              valueMinor={form.bookingFeeMinor ?? 500}
+              onChangeMinor={(minor) => set({ bookingFeeMinor: minor })}
+              aria-label="Booking fee"
             />
           </label>
         ) : null}
@@ -704,41 +834,48 @@ export default function VendorSpaEditPage() {
                   <option value="retreat">Retreat (multi-day)</option>
                 </select>
                 {t.kind === "session" ? (
-                  <input
-                    className={input}
-                    type="number"
-                    placeholder="Duration (minutes)"
-                    value={t.durationMinutes ?? ""}
-                    onChange={(e) =>
-                      setTreatments((list) =>
-                        list.map((x, j) => (j === i ? { ...x, durationMinutes: Number(e.target.value) } : x))
-                      )
-                    }
-                  />
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-veda-800">Duration</span>
+                    <PostfixInput
+                      suffix="Minutes"
+                      placeholder="60"
+                      value={t.durationMinutes}
+                      onChangeValue={(n) =>
+                        setTreatments((list) =>
+                          list.map((x, j) => (j === i ? { ...x, durationMinutes: n } : x))
+                        )
+                      }
+                      aria-label="Duration in minutes"
+                    />
+                  </div>
                 ) : (
-                  <input
-                    className={input}
-                    type="number"
-                    placeholder="Nights"
-                    value={t.nights ?? ""}
-                    onChange={(e) =>
+                  <div>
+                    <span className="mb-1 block text-xs font-medium text-veda-800">Length</span>
+                    <PostfixInput
+                      suffix="Nights"
+                      placeholder="3"
+                      value={t.nights}
+                      onChangeValue={(n) =>
+                        setTreatments((list) =>
+                          list.map((x, j) => (j === i ? { ...x, nights: n } : x))
+                        )
+                      }
+                      aria-label="Length in nights"
+                    />
+                  </div>
+                )}
+                <div>
+                  <span className="mb-1 block text-xs font-medium text-veda-800">Amount</span>
+                  <DollarInput
+                    valueMinor={t.priceMinor}
+                    onChangeMinor={(minor) =>
                       setTreatments((list) =>
-                        list.map((x, j) => (j === i ? { ...x, nights: Number(e.target.value) } : x))
+                        list.map((x, j) => (j === i ? { ...x, priceMinor: minor } : x))
                       )
                     }
+                    aria-label="Amount"
                   />
-                )}
-                <input
-                  className={input}
-                  type="number"
-                  placeholder="Price in cents (e.g. 4500 = $45)"
-                  value={t.priceMinor}
-                  onChange={(e) =>
-                    setTreatments((list) =>
-                      list.map((x, j) => (j === i ? { ...x, priceMinor: Number(e.target.value) } : x))
-                    )
-                  }
-                />
+                </div>
                 <label className="flex items-center gap-2 text-sm">
                   <input
                     type="checkbox"
@@ -790,7 +927,6 @@ export default function VendorSpaEditPage() {
           {busy ? "Saving\u2026" : isNew ? "Create listing" : "Save changes"}
         </button>
       </div>
-      {message ? <p className="mt-3 text-sm text-veda-700">{message}</p> : null}
     </div>
   );
 }

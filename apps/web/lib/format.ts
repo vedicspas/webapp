@@ -36,3 +36,8 @@ export const PAYMENT_MODE_LABELS: Record<string, string> = {
   booking_fee: "Small booking fee, pay at the spa",
   pay_at_spa: "Free reservation, pay at the spa",
 };
+
+export const ON_REQUEST_LABELS: Record<"on_request" | "not_available", string> = {
+  on_request: "Available on request",
+  not_available: "Not available",
+};

@@ -71,6 +71,9 @@ export const EMPTY_META: StaticMeta = {
   bookingStatuses: [],
   currencies: [],
   roles: [],
+  languages: [],
+  dietaryOptions: [],
+  accommodationTypes: [],
 };
 
 export const getMeta = () => api<StaticMeta>("/meta", { revalidate: 3600 });

@@ -7,6 +7,7 @@ import type { VendorStatus } from "@vedic/shared";
 import { useApi } from "@/lib/useApi";
 import { money, shortDate } from "@/lib/format";
 import { RatingStars } from "@/components/RatingStars";
+import { toast } from "@/stores/toastStore";
 
 interface Stats {
   users: number;
@@ -121,25 +122,32 @@ export default function AdminPage() {
   async function setVendorStatus(id: number, status: VendorStatus) {
     try {
       await call(`/admin/vendors/${id}/status`, { method: "PATCH", body: { status } });
+      toast("Vendor status saved.");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Update failed");
+      toast(err instanceof Error ? err.message : "Update failed", "error");
     }
   }
 
   async function setSpaPublished(id: number, isPublished: boolean) {
     try {
       await call(`/admin/spas/${id}`, { method: "PATCH", body: { isPublished } });
+      toast(isPublished ? "Listing published." : "Listing unpublished.");
       load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Update failed");
+      toast(err instanceof Error ? err.message : "Update failed", "error");
     }
   }
 
   async function deleteReview(id: number) {
     if (!confirm("Delete this review permanently?")) return;
-    await call(`/admin/reviews/${id}`, { method: "DELETE" });
-    load();
+    try {
+      await call(`/admin/reviews/${id}`, { method: "DELETE" });
+      toast("Review deleted.");
+      load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not delete review", "error");
+    }
   }
 
   if (authStatus === "unauthenticated" || (session && !isAdmin)) {

@@ -11,6 +11,7 @@ import type {
   Treatment,
 } from "@vedic/shared";
 import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay } from "@/lib/format";
+import { toast } from "@/stores/toastStore";
 import { PaymentForm } from "./PaymentForm";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
@@ -31,7 +32,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [partySize, setPartySize] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("pick");
   const [result, setResult] = useState<CreateBookingResponse | null>(null);
 
@@ -97,7 +97,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
     }
     if (!treatment || !selectedStart) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`${API_URL}/bookings`, {
         method: "POST",
@@ -115,8 +114,9 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       if (!res.ok) throw new Error(data.error ?? "Booking failed");
       setResult(data as CreateBookingResponse);
       setStep(data.stripeClientSecret ? "pay" : "done");
+      toast(data.stripeClientSecret ? "Booking saved. Complete payment to confirm." : "Booking saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Booking failed");
+      toast(err instanceof Error ? err.message : "Booking failed", "error");
     } finally {
       setLoading(false);
     }
@@ -158,7 +158,10 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         </p>
         <PaymentForm
           clientSecret={result.stripeClientSecret}
-          onSuccess={() => setStep("done")}
+          onSuccess={() => {
+            toast("Payment saved.");
+            setStep("done");
+          }}
         />
       </div>
     );
@@ -181,7 +184,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           onChange={(e) => {
             setTreatmentId(Number(e.target.value));
             setSelectedStart(null);
-            setError(null);
           }}
           className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
         >
@@ -208,7 +210,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
               onChange={(e) => {
                 setDate(e.target.value);
                 setSelectedStart(null);
-                setError(null);
               }}
               className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
             />
@@ -304,8 +305,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           ) : null}
         </div>
       ) : null}
-
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
       <button
         disabled={!treatment || !selectedStart || loading}

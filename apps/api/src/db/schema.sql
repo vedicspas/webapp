@@ -6,8 +6,9 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   review_responses, reviews, bookings, retreat_slots, treatments,
-  spa_closures, spa_open_hours, spa_photos, spa_amenities, spas, vendors,
+  spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options, spas, vendors,
   users, booking_statuses, payment_modes, treatment_categories, amenities,
+  languages, dietary_options, accommodation_types,
   cities, countries, currencies, roles;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -47,6 +48,21 @@ CREATE TABLE amenities (
   id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   name VARCHAR(80) NOT NULL UNIQUE,
   icon VARCHAR(40) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE languages (
+  id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE dietary_options (
+  id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE accommodation_types (
+  id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE treatment_categories (
@@ -122,13 +138,18 @@ CREATE TABLE spas (
   booking_fee_minor INT UNSIGNED NULL,     -- only for payment mode 'booking_fee'
   currency_id TINYINT UNSIGNED NOT NULL,
   is_published TINYINT(1) NOT NULL DEFAULT 0,
+  airport_pickup ENUM('on_request','not_available') NULL,
+  accommodation_type_id SMALLINT UNSIGNED NULL,
+  accessibility TEXT NULL,
+  family_accommodation ENUM('on_request','not_available') NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_spa_city (city_id),
   KEY idx_spa_geo (lat, lng),
   CONSTRAINT fk_spa_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id),
   CONSTRAINT fk_spa_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_spa_payment_mode FOREIGN KEY (payment_mode_id) REFERENCES payment_modes(id),
-  CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id)
+  CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id),
+  CONSTRAINT fk_spa_accommodation FOREIGN KEY (accommodation_type_id) REFERENCES accommodation_types(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE spa_amenities (
@@ -137,6 +158,22 @@ CREATE TABLE spa_amenities (
   PRIMARY KEY (spa_id, amenity_id),
   CONSTRAINT fk_sa_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
   CONSTRAINT fk_sa_amenity FOREIGN KEY (amenity_id) REFERENCES amenities(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_languages (
+  spa_id BIGINT UNSIGNED NOT NULL,
+  language_id SMALLINT UNSIGNED NOT NULL,
+  PRIMARY KEY (spa_id, language_id),
+  CONSTRAINT fk_sl_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sl_lang FOREIGN KEY (language_id) REFERENCES languages(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_dietary_options (
+  spa_id BIGINT UNSIGNED NOT NULL,
+  dietary_option_id SMALLINT UNSIGNED NOT NULL,
+  PRIMARY KEY (spa_id, dietary_option_id),
+  CONSTRAINT fk_sdo_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_sdo_diet FOREIGN KEY (dietary_option_id) REFERENCES dietary_options(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE spa_photos (
