@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { OpenHours, SpaDetail, SpaPhoto, Treatment } from "@vedic/shared";
+import type { OpenHours, SpaDetail, Treatment } from "@vedic/shared";
 import { query, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import {
@@ -9,6 +9,7 @@ import {
   toSpaSummary,
   type SpaSummaryRow,
 } from "../lib/spaQueries.js";
+import { publicPhotoUrl } from "../lib/uploads.js";
 
 const PAGE_SIZE = 12;
 
@@ -41,11 +42,62 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
 
     const where: string[] = ["s.is_published = 1"];
     const args: unknown[] = [];
+    const orderArgs: unknown[] = [];
+    let qLike: string | undefined;
+    let qPrefixLike: string | undefined;
+    let matchingCityIds: number[] = [];
+    let matchingCategoryIds: number[] = [];
 
     if (params.q) {
-      where.push("(s.name LIKE ? OR s.short_description LIKE ? OR s.description LIKE ?)");
-      const like = `%${params.q}%`;
-      args.push(like, like, like);
+      const needle = params.q.trim();
+      const escaped = needle.replace(/([%_\\])/g, "\\$1");
+      qLike = `%${escaped}%`;
+      qPrefixLike = `${escaped}%`;
+      const qLower = needle.toLowerCase();
+      matchingCityIds = [
+        ...new Set(
+          staticCache.cities
+            .filter((c) => {
+              if (c.name.toLowerCase().includes(qLower)) return true;
+              const country = staticCache.country(c.countryId);
+              return Boolean(country?.name.toLowerCase().includes(qLower));
+            })
+            .map((c) => c.id)
+        ),
+      ];
+      matchingCategoryIds = staticCache.treatmentCategories
+        .filter(
+          (c) => c.name.toLowerCase().includes(qLower) || c.slug.toLowerCase().includes(qLower)
+        )
+        .map((c) => c.id);
+
+      // Match only fields the user can see/search: name, city/country, address, treatment.
+      // Do not search long descriptions — "Veda" must not hit "Ayurveda" in body copy.
+      const clauses = [
+        "s.name LIKE ?",
+        "s.address_line LIKE ?",
+        `EXISTS (
+           SELECT 1 FROM treatments tr
+           WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.name LIKE ?
+         )`,
+      ];
+      args.push(qLike, qLike, qLike);
+
+      if (matchingCityIds.length > 0) {
+        clauses.push(`s.city_id IN (${matchingCityIds.map(() => "?").join(",")})`);
+        args.push(...matchingCityIds);
+      }
+      if (matchingCategoryIds.length > 0) {
+        clauses.push(
+          `EXISTS (
+             SELECT 1 FROM treatments tr
+             WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.category_id IN (${matchingCategoryIds.map(() => "?").join(",")})
+           )`
+        );
+        args.push(...matchingCategoryIds);
+      }
+
+      where.push(`(${clauses.join(" OR ")})`);
     }
     if (params.cityId) {
       where.push("s.city_id = ?");
@@ -99,7 +151,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       args.push(params.ratingMin);
     }
 
-    const orderBy =
+    const sortTiebreaker =
       params.sort === "price_asc"
         ? "priceFromMinor ASC"
         : params.sort === "price_desc"
@@ -107,6 +159,33 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
           : params.sort === "distance" && distanceSelect
             ? "distanceKm ASC"
             : "ratingAvg DESC, ratingCount DESC";
+
+    let orderBy = sortTiebreaker;
+    if (params.q && qLike && qPrefixLike) {
+      const rankWhen: string[] = ["WHEN s.name LIKE ? THEN 0", "WHEN s.name LIKE ? THEN 1"];
+      orderArgs.push(qPrefixLike, qLike);
+      if (matchingCityIds.length > 0) {
+        rankWhen.push(
+          `WHEN s.city_id IN (${matchingCityIds.map(() => "?").join(",")}) THEN 2`
+        );
+        orderArgs.push(...matchingCityIds);
+      }
+      rankWhen.push("WHEN s.address_line LIKE ? THEN 2");
+      orderArgs.push(qLike);
+      rankWhen.push(`WHEN EXISTS (
+        SELECT 1 FROM treatments tr
+        WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.name LIKE ?
+      ) THEN 3`);
+      orderArgs.push(qLike);
+      if (matchingCategoryIds.length > 0) {
+        rankWhen.push(`WHEN EXISTS (
+          SELECT 1 FROM treatments tr
+          WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.category_id IN (${matchingCategoryIds.map(() => "?").join(",")})
+        ) THEN 3`);
+        orderArgs.push(...matchingCategoryIds);
+      }
+      orderBy = `CASE ${rankWhen.join(" ")} ELSE 4 END ASC, ${sortTiebreaker}`;
+    }
 
     const baseSql = `${SPA_SUMMARY_SELECT.replace(
       "t.min_price AS priceFromMinor",
@@ -119,7 +198,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     const offset = (params.page - 1) * PAGE_SIZE;
     const rows = await query<SpaSummaryRow>(
       `${baseSql} ORDER BY ${orderBy} LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
-      args
+      [...args, ...orderArgs]
     );
 
     const amenities = await amenityIdsBySpa(rows.map((r) => r.id));
@@ -162,7 +241,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     if (!row) return reply.code(404).send({ error: "Spa not found" });
 
     const [photos, treatments, hours, amenities] = await Promise.all([
-      query<SpaPhoto>(
+      query<{ id: number; url: string; alt: string; sortOrder: number }>(
         "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
         [row.id]
       ),
@@ -191,10 +270,17 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       shopifyCollectionHandle: row.shopifyCollectionHandle,
       depositBps: row.depositBps === null ? null : Number(row.depositBps),
       bookingFeeMinor: row.bookingFeeMinor === null ? null : Number(row.bookingFeeMinor),
-      photos,
+      photos: photos.map((p) => ({
+        id: p.id,
+        url: publicPhotoUrl(p.url) ?? p.url,
+        title: p.alt,
+        alt: p.alt,
+        sortOrder: p.sortOrder,
+      })),
       treatments: treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })),
       openHours: hours,
     };
+    reply.header("Cache-Control", "private, no-store");
     return detail;
   });
 }

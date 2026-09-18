@@ -105,6 +105,8 @@ export interface Treatment {
 export interface SpaPhoto {
   id: number;
   url: string;
+  /** Short caption shown on the listing gallery. Stored as text, not a file blob. */
+  title: string;
   alt: string;
   sortOrder: number;
 }

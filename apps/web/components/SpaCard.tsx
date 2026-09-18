@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { RemotePhoto } from "./RemotePhoto";
 import type { SpaSummary } from "@vedic/shared";
 import { money, PAYMENT_MODE_LABELS } from "@/lib/format";
 import { RatingStars } from "./RatingStars";
@@ -13,12 +13,10 @@ export function SpaCard({ spa }: { spa: SpaSummary & { distanceKm?: number } }) 
     >
       <div className="relative aspect-[4/3]">
         {spa.coverPhotoUrl ? (
-          <Image
+          <RemotePhoto
             src={spa.coverPhotoUrl}
             alt={spa.name}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
-            className="object-cover transition duration-300 group-hover:scale-105"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="h-full w-full bg-veda-100" />

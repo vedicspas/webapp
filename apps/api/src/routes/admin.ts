@@ -5,6 +5,7 @@ import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
+  if (request.method === "OPTIONS") return;
   await requireAuth(request, reply);
   if (reply.sent) return;
   if (request.user!.role !== "admin") {

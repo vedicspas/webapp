@@ -24,6 +24,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const [treatmentId, setTreatmentId] = useState<number | null>(
     spa.treatments[0]?.id ?? null
   );
+  const [treatments, setTreatments] = useState<Treatment[]>(spa.treatments);
   const [date, setDate] = useState("");
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [retreatSlots, setRetreatSlots] = useState<RetreatSlot[]>([]);
@@ -34,7 +35,27 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const [step, setStep] = useState<Step>("pick");
   const [result, setResult] = useState<CreateBookingResponse | null>(null);
 
-  const treatment: Treatment | undefined = spa.treatments.find((t) => t.id === treatmentId);
+  const treatment: Treatment | undefined = treatments.find((t) => t.id === treatmentId);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/spas/${spa.slug}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: SpaDetail) => {
+        if (cancelled || !Array.isArray(data.treatments)) return;
+        setTreatments(data.treatments);
+        setTreatmentId((current) => {
+          if (current && data.treatments.some((t) => t.id === current)) return current;
+          return data.treatments[0]?.id ?? null;
+        });
+      })
+      .catch(() => {
+        /* keep the server-rendered list if the live fetch fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spa.slug]);
 
   // Load availability whenever treatment/date changes. Selection resets are
   // handled in the select/date change handlers.
@@ -148,6 +169,11 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       <h3 className="text-lg font-semibold text-veda-900">Book a treatment</h3>
       <p className="mt-0.5 text-xs text-veda-600">{PAYMENT_MODE_LABELS[spa.paymentModeCode]}</p>
 
+      {treatments.length === 0 ? (
+        <p className="mt-4 rounded-lg bg-veda-50 px-3 py-2 text-sm text-foreground/70">
+          No treatments are currently offered for booking.
+        </p>
+      ) : (
       <label className="mt-4 block text-sm font-medium">
         Treatment
         <select
@@ -159,7 +185,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           }}
           className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
         >
-          {spa.treatments.map((t) => (
+          {treatments.map((t) => (
             <option key={t.id} value={t.id}>
               {t.name} &mdash; {money(t.priceMinor, spa.currencyCode)}
               {t.kind === "retreat" ? " / person" : ""}
@@ -167,7 +193,10 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           ))}
         </select>
       </label>
+      )}
 
+      {treatments.length === 0 ? null : (
+      <>
       {treatment?.kind === "session" ? (
         <>
           <label className="mt-3 block text-sm font-medium">
@@ -285,6 +314,8 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       >
         {loading ? "Booking\u2026" : session ? "Reserve" : "Sign in to book"}
       </button>
+      </>
+      )}
       <p className="mt-2 text-center text-xs text-foreground/50">
         Payments are processed securely by Stripe. Card details never touch our servers.
       </p>

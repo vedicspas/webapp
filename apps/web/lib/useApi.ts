@@ -12,13 +12,14 @@ export function useApi() {
 
   const call = useCallback(
     async <T>(path: string, options: { method?: string; body?: unknown } = {}): Promise<T> => {
+      const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
       const res = await fetch(`${API_URL}${path}`, {
         method: options.method ?? "GET",
         headers: {
-          ...(options.body !== undefined ? { "content-type": "application/json" } : {}),
+          ...(options.body !== undefined && !isForm ? { "content-type": "application/json" } : {}),
           ...(token ? { authorization: `Bearer ${token}` } : {}),
         },
-        body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+        body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);

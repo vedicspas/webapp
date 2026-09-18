@@ -142,8 +142,9 @@ CREATE TABLE spa_amenities (
 CREATE TABLE spa_photos (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   spa_id BIGINT UNSIGNED NOT NULL,
+  -- Filesystem path or remote URL — never store the image bytes (BLOB) here.
   url VARCHAR(500) NOT NULL,
-  alt VARCHAR(200) NOT NULL DEFAULT '',
+  alt VARCHAR(200) NOT NULL DEFAULT '', -- image title / short caption
   sort_order SMALLINT UNSIGNED NOT NULL DEFAULT 0,
   KEY idx_photo_spa (spa_id, sort_order),
   CONSTRAINT fk_photo_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE

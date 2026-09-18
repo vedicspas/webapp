@@ -21,13 +21,19 @@ interface ApiSession {
 }
 
 async function apiAuth(path: string, body: unknown): Promise<ApiSession | null> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) return null;
-  return res.json();
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    // API unreachable (container down, wrong URL, etc.) — treat as failed login
+    // so the sign-in page can distinguish this from a bad password.
+    return null;
+  }
 }
 
 const providers = [
@@ -61,6 +67,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   secret: process.env.AUTH_SECRET,
+  trustHost: true,
   session: { strategy: "jwt" },
   pages: { signIn: "/auth/signin" },
   providers,

@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Image from "next/image";
+import { RemotePhoto } from "@/components/RemotePhoto";
 import { ApiError, getQuestions, getReviews, getSpa, getSpaSlugs } from "@/lib/api";
 import { getSpaProducts } from "@/lib/shopify";
 import { RatingStars } from "@/components/RatingStars";
@@ -12,8 +12,9 @@ import { QASection } from "@/components/spa/QASection";
 import { ShopSection } from "@/components/spa/ShopSection";
 import { WEEKDAYS } from "@/lib/format";
 
-// Prerender every published spa at build time; refresh in background.
-export const revalidate = 300;
+// Booking inventory (treatments) must not stay stale after a vendor deletes one.
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const dynamicParams = true;
 
 export async function generateStaticParams() {
@@ -56,21 +57,27 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* Photo gallery */}
       <div className="relative flex snap-x snap-mandatory gap-2 overflow-x-auto rounded-2xl">
-        {spa.photos.map((photo, i) => (
-          <div
-            key={photo.id}
-            className="relative aspect-[4/3] w-[85%] shrink-0 snap-center overflow-hidden rounded-2xl sm:w-[45%] lg:w-[32%]"
-          >
-            <Image
-              src={photo.url}
-              alt={photo.alt || spa.name}
-              fill
-              sizes="(max-width: 640px) 85vw, 33vw"
-              className="object-cover"
-              priority={i === 0}
-            />
-          </div>
-        ))}
+        {spa.photos.length > 0 ? (
+          spa.photos.map((photo) => (
+            <div
+              key={photo.id}
+              className="relative aspect-[4/3] w-[85%] shrink-0 snap-center overflow-hidden rounded-2xl sm:w-[45%] lg:w-[32%]"
+            >
+              <RemotePhoto
+                src={photo.url}
+                alt={photo.title || photo.alt || spa.name}
+                className="h-full w-full object-cover"
+              />
+              {photo.title || photo.alt ? (
+                <p className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 to-transparent px-3 pb-2.5 pt-8 text-sm font-medium text-white">
+                  {photo.title || photo.alt}
+                </p>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <div className="aspect-[4/3] w-full rounded-2xl bg-veda-100" />
+        )}
         <WishlistButton spaId={spa.id} className="absolute right-3 top-3 z-10" />
       </div>
 
