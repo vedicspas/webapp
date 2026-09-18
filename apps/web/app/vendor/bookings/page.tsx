@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Booking } from "@vedic/shared";
 import { useApi } from "@/lib/useApi";
 import { money, shortDate, timeOfDay, PAYMENT_MODE_LABELS } from "@/lib/format";
+import { toast } from "@/stores/toastStore";
 
 type VendorBooking = Booking & { guestName: string; guestEmail: string };
 
@@ -24,8 +25,13 @@ export default function VendorBookingsPage() {
   }, [token, load]);
 
   async function setStatus(id: number, status: string) {
-    await call(`/vendor/bookings/${id}/status`, { method: "PATCH", body: { status } });
-    load();
+    try {
+      await call(`/vendor/bookings/${id}/status`, { method: "PATCH", body: { status } });
+      toast("Booking updated.");
+      load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not update booking", "error");
+    }
   }
 
   if (authStatus === "unauthenticated") {

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Question } from "@vedic/shared";
 import { shortDate } from "@/lib/format";
+import { toast } from "@/stores/toastStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -24,34 +25,54 @@ export function QASection({ slug, initial }: { slug: string; initial: Question[]
   async function ask() {
     if (!session?.apiToken || newQuestion.length < 5) return;
     setBusy(true);
-    await fetch(`${API_URL}/spas/${slug}/questions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${session.apiToken}`,
-      },
-      body: JSON.stringify({ body: newQuestion }),
-    });
-    setNewQuestion("");
-    await refresh();
-    setBusy(false);
+    try {
+      const res = await fetch(`${API_URL}/spas/${slug}/questions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.apiToken}`,
+        },
+        body: JSON.stringify({ body: newQuestion }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Could not post question");
+      }
+      setNewQuestion("");
+      await refresh();
+      toast("Question posted.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not post question", "error");
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function answer(questionId: number) {
     if (!session?.apiToken || answerText.length < 2) return;
     setBusy(true);
-    await fetch(`${API_URL}/questions/${questionId}/answers`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${session.apiToken}`,
-      },
-      body: JSON.stringify({ body: answerText }),
-    });
-    setAnswerFor(null);
-    setAnswerText("");
-    await refresh();
-    setBusy(false);
+    try {
+      const res = await fetch(`${API_URL}/questions/${questionId}/answers`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${session.apiToken}`,
+        },
+        body: JSON.stringify({ body: answerText }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? "Could not post answer");
+      }
+      setAnswerFor(null);
+      setAnswerText("");
+      await refresh();
+      toast("Answer saved.");
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not post answer", "error");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (

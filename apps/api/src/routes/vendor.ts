@@ -8,6 +8,9 @@ import { config } from "../config.js";
 import { deleteLocalPhoto, publicPhotoUrl, saveSpaPhotoFile } from "../lib/uploads.js";
 import { toBooking } from "./bookings.js";
 import { toReview } from "./reviews.js";
+import { issueSessionForUserId } from "./auth.js";
+import { ensureVendorAccount } from "../lib/vendorAccount.js";
+import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 
 function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
   for (const name of names) {
@@ -77,6 +80,12 @@ const spaBodySchema = z.object({
   bookingFeeMinor: z.number().int().min(100).nullable().default(null),
   currencyCode: z.string().length(3).default("USD"),
   isPublished: z.boolean().default(false),
+  languages: z.array(z.string().max(80)).optional().default([]),
+  dietaryOptions: z.array(z.string().max(80)).optional().default([]),
+  airportPickup: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
+  accommodationTypeId: z.number().int().nullable().optional().default(null),
+  accessibility: z.string().max(2000).nullable().optional().default(null),
+  familyAccommodation: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
 });
 
 function slugify(name: string): string {
@@ -97,15 +106,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const existing = await vendorFor(request);
     if (existing) return reply.code(409).send({ error: "Already a vendor" });
 
-    await execute("INSERT INTO vendors (user_id, business_name) VALUES (?,?)", [
-      request.user!.id,
-      body.businessName,
-    ]);
-    await execute("UPDATE users SET role_id = ? WHERE id = ?", [
-      staticCache.roleByCode("vendor")!.id,
-      request.user!.id,
-    ]);
-    return reply.code(201).send({ ok: true });
+    await ensureVendorAccount(request.user!.id, body.businessName);
+    return reply.code(201).send(await issueSessionForUserId(request.user!.id));
   });
 
   app.get("/vendor/me", async (request, reply) => {
@@ -218,6 +220,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         currency.id, body.isPublished ? 1 : 0,
       ]
     );
+    await saveSpaStay(result.insertId, body);
     return reply.code(201).send({ id: result.insertId, slug });
   });
 
@@ -249,6 +252,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         currency.id, body.isPublished ? 1 : 0, spaId,
       ]
     );
+    await saveSpaStay(spaId, body);
     return { ok: true };
   });
 
@@ -283,6 +287,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
       [spaId]
     );
+    const stay = await loadSpaStay(spaId);
     return {
       ...spa,
       paymentModeCode: staticCache.paymentMode(Number(spa.paymentModeId))?.code,
@@ -297,6 +302,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         alt: p.alt,
         sortOrder: p.sortOrder,
       })),
+      ...stay,
+      accommodationTypeId: stay.accommodationType?.id ?? null,
     };
   });
 

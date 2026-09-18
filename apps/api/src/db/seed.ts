@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { pool, execute, query } from "./pool.js";
+import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES } from "./lookups.js";
 
 async function insert(sql: string, params: unknown[]): Promise<number> {
   const result = await execute(sql, params);
@@ -7,6 +8,13 @@ async function insert(sql: string, params: unknown[]): Promise<number> {
 }
 
 async function main() {
+  const already = await query<{ id: number }>("SELECT id FROM users LIMIT 1").catch(() => []);
+  if (already.length > 0) {
+    console.log("Database already seeded — skipping seed.");
+    await pool.end();
+    return;
+  }
+
   console.log("Seeding database...");
 
   // ---- Static lookup tables ----
@@ -80,6 +88,16 @@ async function main() {
      ('completed','Completed'), ('no_show','No-show')`,
     []
   );
+
+  for (const name of LANGUAGE_NAMES) {
+    await execute("INSERT IGNORE INTO languages (name) VALUES (?)", [name]);
+  }
+  for (const name of DIETARY_NAMES) {
+    await execute("INSERT IGNORE INTO dietary_options (name) VALUES (?)", [name]);
+  }
+  for (const name of ACCOMMODATION_NAMES) {
+    await execute("INSERT IGNORE INTO accommodation_types (name) VALUES (?)", [name]);
+  }
 
   // ---- Users ----
   const hash = await bcrypt.hash("password123", 10);

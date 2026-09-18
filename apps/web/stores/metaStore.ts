@@ -12,6 +12,9 @@ const empty: StaticMeta = {
   bookingStatuses: [],
   currencies: [],
   roles: [],
+  languages: [],
+  dietaryOptions: [],
+  accommodationTypes: [],
 };
 
 interface MetaState {

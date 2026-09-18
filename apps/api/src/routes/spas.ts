@@ -10,6 +10,7 @@ import {
   type SpaSummaryRow,
 } from "../lib/spaQueries.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
+import { loadSpaStay } from "../lib/spaStay.js";
 
 const PAGE_SIZE = 12;
 
@@ -240,7 +241,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     );
     if (!row) return reply.code(404).send({ error: "Spa not found" });
 
-    const [photos, treatments, hours, amenities] = await Promise.all([
+    const [photos, treatments, hours, amenities, stay] = await Promise.all([
       query<{ id: number; url: string; alt: string; sortOrder: number }>(
         "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
         [row.id]
@@ -257,6 +258,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         [row.id]
       ),
       amenityIdsBySpa([row.id]),
+      loadSpaStay(row.id),
     ]);
 
     const detail: SpaDetail = {
@@ -279,6 +281,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       })),
       treatments: treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })),
       openHours: hours,
+      ...stay,
     };
     reply.header("Cache-Control", "private, no-store");
     return detail;

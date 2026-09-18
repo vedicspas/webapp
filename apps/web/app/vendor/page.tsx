@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/lib/useApi";
+import { toast } from "@/stores/toastStore";
 
 interface VendorMe {
   id: number;
@@ -51,7 +52,7 @@ export default function VendorDashboardPage() {
       const { url } = await call<{ url: string }>("/vendor/stripe/onboard", { method: "POST" });
       window.location.href = url;
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Stripe onboarding unavailable");
+      toast(err instanceof Error ? err.message : "Stripe onboarding unavailable", "error");
       setBusy(false);
     }
   }
@@ -75,10 +76,10 @@ export default function VendorDashboardPage() {
           Create a free vendor account to publish your center, take bookings and reply to reviews.
         </p>
         <Link
-          href="/vendor/register"
+          href="/list-spa"
           className="mt-6 inline-block rounded-full bg-turmeric-400 px-6 py-2.5 font-semibold text-veda-900 hover:bg-turmeric-300"
         >
-          Become a vendor
+          List your spa
         </Link>
       </div>
     );
