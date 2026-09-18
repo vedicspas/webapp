@@ -5,8 +5,21 @@ import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 import { stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
+import { deleteLocalPhoto, publicPhotoUrl, saveSpaPhotoFile } from "../lib/uploads.js";
 import { toBooking } from "./bookings.js";
 import { toReview } from "./reviews.js";
+
+function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
+  for (const name of names) {
+    const raw = file.fields?.[name];
+    if (!raw) continue;
+    const one = Array.isArray(raw) ? raw[0] : raw;
+    if (one && typeof one === "object" && "value" in one) {
+      return String((one as { value?: unknown }).value ?? "");
+    }
+  }
+  return "";
+}
 
 interface VendorRow {
   id: number;
@@ -266,7 +279,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
        FROM spa_open_hours WHERE spa_id = ? ORDER BY weekday`,
       [spaId]
     );
-    const photos = await query(
+    const photos = await query<{ id: number; url: string; alt: string; sortOrder: number }>(
       "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
       [spaId]
     );
@@ -277,7 +290,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       isPublished: Boolean(spa.isPublished),
       treatments,
       openHours: hours,
-      photos,
+      photos: photos.map((p) => ({
+        id: p.id,
+        url: publicPhotoUrl(p.url) ?? p.url,
+        title: p.alt,
+        alt: p.alt,
+        sortOrder: p.sortOrder,
+      })),
     };
   });
 
@@ -313,30 +332,81 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const spaId = Number((request.params as { id: string }).id);
     if (!(await assertSpaOwnership(spaId, vendor.id, reply))) return;
 
-    const body = z
-      .object({ url: z.string().url(), alt: z.string().max(200).default("") })
-      .parse(request.body);
     const max = await queryOne<{ m: number }>(
       "SELECT COALESCE(MAX(sort_order), -1) AS m FROM spa_photos WHERE spa_id = ?",
       [spaId]
     );
+    const nextOrder = Number(max?.m ?? -1) + 1;
+    const contentType = String(request.headers["content-type"] ?? "");
+
+    if (contentType.includes("multipart/form-data")) {
+      const file = await request.file();
+      if (!file) return reply.code(400).send({ error: "Choose an image file to upload" });
+      const buffer = await file.toBuffer();
+      const title = multipartField(file, ["title", "alt"]).slice(0, 200);
+      try {
+        const saved = await saveSpaPhotoFile(spaId, buffer, file.mimetype);
+        const result = await execute(
+          "INSERT INTO spa_photos (spa_id, url, alt, sort_order) VALUES (?,?,?,?)",
+          [spaId, saved.relativeUrl, title, nextOrder]
+        );
+        return reply.code(201).send({
+          id: result.insertId,
+          url: saved.absoluteUrl,
+          title,
+          alt: title,
+        });
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 400;
+        return reply.code(status).send({ error: (err as Error).message });
+      }
+    }
+
+    const body = z
+      .object({
+        url: z.string().url(),
+        title: z.string().max(200).optional(),
+        alt: z.string().max(200).optional(),
+      })
+      .parse(request.body);
+    const title = (body.title ?? body.alt ?? "").slice(0, 200);
     const result = await execute(
       "INSERT INTO spa_photos (spa_id, url, alt, sort_order) VALUES (?,?,?,?)",
-      [spaId, body.url, body.alt, Number(max?.m ?? -1) + 1]
+      [spaId, body.url, title, nextOrder]
     );
-    return reply.code(201).send({ id: result.insertId });
+    return reply.code(201).send({ id: result.insertId, url: body.url, title, alt: title });
+  });
+
+  app.patch("/vendor/photos/:photoId", async (request, reply) => {
+    const vendor = await requireVendor(request, reply);
+    if (!vendor) return;
+    const photoId = Number((request.params as { photoId: string }).photoId);
+    const body = z.object({ title: z.string().max(200) }).parse(request.body);
+    const result = await execute(
+      `UPDATE spa_photos p JOIN spas s ON s.id = p.spa_id
+       SET p.alt = ? WHERE p.id = ? AND s.vendor_id = ?`,
+      [body.title, photoId, vendor.id]
+    );
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Photo not found" });
+    return { ok: true, title: body.title };
   });
 
   app.delete("/vendor/photos/:photoId", async (request, reply) => {
     const vendor = await requireVendor(request, reply);
     if (!vendor) return;
     const photoId = Number((request.params as { photoId: string }).photoId);
-    const result = await execute(
+    const row = await queryOne<{ url: string }>(
+      `SELECT p.url FROM spa_photos p JOIN spas s ON s.id = p.spa_id
+       WHERE p.id = ? AND s.vendor_id = ?`,
+      [photoId, vendor.id]
+    );
+    if (!row) return reply.code(404).send({ error: "Photo not found" });
+    await execute(
       `DELETE p FROM spa_photos p JOIN spas s ON s.id = p.spa_id
        WHERE p.id = ? AND s.vendor_id = ?`,
       [photoId, vendor.id]
     );
-    if (result.affectedRows === 0) return reply.code(404).send({ error: "Photo not found" });
+    await deleteLocalPhoto(row.url);
     return { ok: true };
   });
 
@@ -388,6 +458,32 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Treatment not found" });
+    return { ok: true };
+  });
+
+  app.delete("/vendor/treatments/:id", async (request, reply) => {
+    const vendor = await requireVendor(request, reply);
+    if (!vendor) return;
+    const treatmentId = Number((request.params as { id: string }).id);
+
+    const owned = await queryOne<{ id: number }>(
+      "SELECT t.id FROM treatments t JOIN spas s ON s.id = t.spa_id WHERE t.id = ? AND s.vendor_id = ?",
+      [treatmentId, vendor.id]
+    );
+    if (!owned) return reply.code(404).send({ error: "Treatment not found" });
+
+    const booked = await queryOne<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM bookings WHERE treatment_id = ?",
+      [treatmentId]
+    );
+    if (Number(booked?.n ?? 0) > 0) {
+      return reply.code(409).send({
+        error:
+          "This treatment has bookings, so it cannot be deleted. Uncheck Active to hide it from guests.",
+      });
+    }
+
+    await execute("DELETE FROM treatments WHERE id = ?", [treatmentId]);
     return { ok: true };
   });
 

@@ -86,8 +86,11 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PLATFORM_FEE_BPS: ${PLATFORM_FEE_BPS:-750}
       DEFAULT_BOOKING_FEE_MINOR: ${DEFAULT_BOOKING_FEE_MINOR:-500}
+      UPLOAD_DIR: /data/uploads
     ports:
       - "4100:4100"
+    volumes:
+      - spa_uploads:/data/uploads
     healthcheck:
       test:
         [
@@ -135,3 +138,4 @@ services:
 
 volumes:
   mariadb_data:
+  spa_uploads:

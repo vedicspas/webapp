@@ -60,8 +60,9 @@ in person — so booking-fee and pay-at-spa modes work even **without** Stripe o
 - **Shopify collection handle** — if the platform sells your herbs/products through its Shopify
   store, put your collection's handle here (e.g. `kerala-ayurveda-herbs`) and a shop section
   appears on your spa page. See [`../SHOPIFY_SETUP.md`](../SHOPIFY_SETUP.md).
-- **Photos** — paste image URLs with alt text and a sort order; the first photo is your search
-  card image.
+- **Photos** — choose one or more JPEG/PNG/WebP/GIF files (max 8 MB each) and give each a
+  short title. Titles appear on the public spa gallery. Files are stored on the platform
+  server disk; the first photo is your search card image.
 - **Opening hours** — set open/close per weekday; leave a day empty to be closed. These hours
   generate your bookable session slots, so keep them accurate.
 

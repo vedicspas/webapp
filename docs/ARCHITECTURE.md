@@ -308,6 +308,6 @@ rejected while pending), not just hidden UI.
 | Cancellations & refunds | Manual (vendor cancels; refund via Stripe dashboard) | Add refund policy fields + `stripe.refunds.create` flow |
 | Timezones | Slot times are the spa's local wall-clock, stored as UTC | Store IANA timezone per spa; convert in UI |
 | Notifications | None (no email/SMS) | Transactional email (Resend/SES) on booking/approval events |
-| Photo uploads | Vendors paste image URLs | S3/R2 presigned upload |
+| Photo uploads | Files saved on the API server disk (`/uploads`) | S3/R2 if you outgrow local disk |
 | Search text | SQL `LIKE` | FULLTEXT index or Meilisearch/Typesense |
 | Cities | Fixed seeded list | Admin CRUD or geocoding API |

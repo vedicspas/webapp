@@ -5,9 +5,11 @@ import { useParams, useRouter } from "next/navigation";
 import { useApi } from "@/lib/useApi";
 import { useMetaStore } from "@/stores/metaStore";
 import { PAYMENT_MODE_LABELS, WEEKDAYS } from "@/lib/format";
+import { RemotePhoto } from "@/components/RemotePhoto";
 
 interface VendorTreatment {
   id?: number;
+  clientKey?: string;
   categoryId: number;
   kind: "session" | "retreat";
   name: string;
@@ -16,6 +18,50 @@ interface VendorTreatment {
   nights: number | null;
   priceMinor: number;
   isActive: boolean;
+}
+
+function blankTreatment(categoryId: number): VendorTreatment {
+  return {
+    clientKey: `new-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    categoryId,
+    kind: "session",
+    name: "",
+    description: "",
+    durationMinutes: 60,
+    nights: null,
+    priceMinor: 5000,
+    isActive: true,
+  };
+}
+
+function treatmentReadyToSave(t: VendorTreatment): string | null {
+  if (t.name.trim().length < 3) return "Enter a treatment name (at least 3 characters).";
+  if (t.kind === "session" && (!t.durationMinutes || t.durationMinutes < 15)) {
+    return "Enter a duration of at least 15 minutes.";
+  }
+  if (t.kind === "retreat" && (!t.nights || t.nights < 1)) {
+    return "Enter the number of nights.";
+  }
+  return null;
+}
+
+function treatmentFinished(t: VendorTreatment): boolean {
+  return Boolean(t.id) && treatmentReadyToSave(t) === null;
+}
+
+interface VendorPhoto {
+  id: number;
+  url: string;
+  title: string;
+  alt: string;
+  sortOrder: number;
+}
+
+interface PendingPhoto {
+  key: string;
+  file: File;
+  title: string;
+  preview: string;
 }
 
 interface SpaForm {
@@ -69,7 +115,12 @@ export default function VendorSpaEditPage() {
   const meta = useMetaStore((s) => s.meta);
 
   const [form, setForm] = useState<SpaForm>(EMPTY);
+  const [listingSlug, setListingSlug] = useState<string | null>(null);
   const [treatments, setTreatments] = useState<VendorTreatment[]>([]);
+  const [photos, setPhotos] = useState<VendorPhoto[]>([]);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [hours, setHours] = useState(
     Array.from({ length: 7 }, (_, weekday) => ({ weekday, openTime: "09:00", closeTime: "18:00", closed: false }))
   );
@@ -79,15 +130,34 @@ export default function VendorSpaEditPage() {
 
   const set = (patch: Partial<SpaForm>) => setForm((f) => ({ ...f, ...patch }));
 
+  async function refreshPublicSpaPage(slug: string | null) {
+    if (!slug) return;
+    await fetch("/api/revalidate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug }),
+    }).catch(() => {});
+  }
+
   const load = useCallback(async () => {
     const data = await call<
       SpaForm & {
+        slug?: string;
         treatments: VendorTreatment[];
+        photos: VendorPhoto[];
         openHours: { weekday: number; openTime: string; closeTime: string }[];
       }
     >(`/vendor/spas/${id}`);
     setForm({ ...data, depositBps: data.depositBps ?? 2000, bookingFeeMinor: data.bookingFeeMinor ?? 500 });
+    setListingSlug(data.slug ?? null);
     setTreatments(data.treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })));
+    setPhotos(
+      (data.photos ?? []).map((p) => ({
+        ...p,
+        title: p.title || p.alt || "",
+        alt: p.alt || p.title || "",
+      }))
+    );
     setHours(
       Array.from({ length: 7 }, (_, weekday) => {
         const h = data.openHours.find((x) => x.weekday === weekday);
@@ -130,6 +200,7 @@ export default function VendorSpaEditPage() {
         body: hours.filter((h) => !h.closed).map(({ weekday, openTime, closeTime }) => ({ weekday, openTime, closeTime })),
       });
       setMessage("Saved.");
+      await refreshPublicSpaPage(listingSlug);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -137,10 +208,109 @@ export default function VendorSpaEditPage() {
     }
   }
 
+  function queuePhotos(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    const next: PendingPhoto[] = Array.from(fileList).map((file) => ({
+      key: `${file.name}-${file.size}-${file.lastModified}-${Math.random()}`,
+      file,
+      title: file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim(),
+      preview: URL.createObjectURL(file),
+    }));
+    setPendingPhotos((list) => [...list, ...next]);
+    setFileInputKey((k) => k + 1);
+  }
+
+  function dropPending(key: string) {
+    setPendingPhotos((list) => {
+      const item = list.find((p) => p.key === key);
+      if (item) URL.revokeObjectURL(item.preview);
+      return list.filter((p) => p.key !== key);
+    });
+  }
+
+  async function uploadPending() {
+    if (pendingPhotos.length === 0) return;
+    setPhotoBusy(true);
+    setMessage(null);
+    try {
+      const uploaded: VendorPhoto[] = [];
+      for (const item of pendingPhotos) {
+        const data = new FormData();
+        data.append("file", item.file);
+        data.append("title", item.title.trim());
+        const created = await call<{ id: number; url: string; title?: string; alt?: string }>(
+          `/vendor/spas/${id}/photos`,
+          { method: "POST", body: data }
+        );
+        const title = created.title || created.alt || item.title.trim();
+        uploaded.push({
+          id: created.id,
+          url: created.url,
+          title,
+          alt: title,
+          sortOrder: photos.length + uploaded.length,
+        });
+      }
+      pendingPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
+      setPendingPhotos([]);
+      setPhotos((list) => [...list, ...uploaded]);
+      setMessage(
+        uploaded.length === 1
+          ? "Photo uploaded. The first photo is used on search cards."
+          : `${uploaded.length} photos uploaded. The first photo is used on search cards.`
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not upload photos");
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  async function savePhotoTitle(photoId: number, title: string) {
+    try {
+      await call(`/vendor/photos/${photoId}`, { method: "PATCH", body: { title } });
+      setPhotos((list) =>
+        list.map((p) => (p.id === photoId ? { ...p, title, alt: title } : p))
+      );
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not update title");
+    }
+  }
+
+  async function removePhoto(photoId: number) {
+    try {
+      await call(`/vendor/photos/${photoId}`, { method: "DELETE" });
+      setPhotos((list) => list.filter((p) => p.id !== photoId));
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not remove photo");
+    }
+  }
+
+  function addTreatment() {
+    const last = treatments[treatments.length - 1];
+    if (last && !treatmentFinished(last)) {
+      const missing = treatmentReadyToSave(last);
+      setMessage(
+        missing
+          ? `Finish the treatment above first. ${missing}`
+          : "Save the treatment above before adding another."
+      );
+      return;
+    }
+    setMessage(null);
+    setTreatments((list) => [...list, blankTreatment(meta.treatmentCategories[0]?.id ?? 1)]);
+  }
+
   async function saveTreatment(t: VendorTreatment, index: number) {
+    const missing = treatmentReadyToSave(t);
+    if (missing) {
+      setMessage(missing);
+      return;
+    }
     try {
       const body = {
         ...t,
+        name: t.name.trim(),
         durationMinutes: t.kind === "session" ? t.durationMinutes : null,
         nights: t.kind === "retreat" ? t.nights : null,
       };
@@ -151,8 +321,31 @@ export default function VendorSpaEditPage() {
         setTreatments((list) => list.map((x, i) => (i === index ? { ...x, id: created.id } : x)));
       }
       setMessage("Treatment saved.");
+      await refreshPublicSpaPage(listingSlug);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Treatment save failed");
+    }
+  }
+
+  async function deleteTreatment(t: VendorTreatment, index: number) {
+    const label = t.name.trim() || "this treatment";
+    const warning = t.id
+      ? `Delete “${label}”? This cannot be undone. If guests have already booked it, you will need to uncheck Active instead.`
+      : `Discard “${label}”? It has not been saved yet.`;
+    if (!window.confirm(warning)) return;
+
+    if (!t.id) {
+      setTreatments((list) => list.filter((_, i) => i !== index));
+      setMessage("Treatment discarded.");
+      return;
+    }
+    try {
+      await call(`/vendor/treatments/${t.id}`, { method: "DELETE" });
+      setTreatments((list) => list.filter((_, i) => i !== index));
+      setMessage("Treatment deleted.");
+      await refreshPublicSpaPage(listingSlug);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Could not delete treatment");
     }
   }
 
@@ -244,6 +437,115 @@ export default function VendorSpaEditPage() {
           </label>
         </div>
       </section>
+
+      {!isNew ? (
+        <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+          <h2 className="font-semibold text-veda-900">Photos</h2>
+          <p className="text-sm text-foreground/60">
+            Select one or more JPEG, PNG, WebP, or GIF files (up to 8&nbsp;MB each). Give each
+            image a short title — it appears on your public listing. Files are stored on this
+            server, not as database blobs. The first photo is the search-card cover.
+          </p>
+          {photos.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {photos.map((p, i) => (
+                <div key={p.id} className="overflow-hidden rounded-xl border border-veda-100">
+                  <div className="relative aspect-[4/3] bg-veda-50">
+                    <RemotePhoto src={p.url} alt={p.title || p.alt || form.name} className="h-full w-full object-cover" />
+                    {i === 0 ? (
+                      <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] text-white">
+                        Cover
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="space-y-1.5 p-2">
+                    <input
+                      className={input}
+                      value={p.title}
+                      maxLength={200}
+                      placeholder="Image title"
+                      onChange={(e) =>
+                        setPhotos((list) =>
+                          list.map((x) =>
+                            x.id === p.id ? { ...x, title: e.target.value, alt: e.target.value } : x
+                          )
+                        )
+                      }
+                      onBlur={(e) => void savePhotoTitle(p.id, e.target.value.trim())}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void removePhoto(p.id)}
+                      className="text-xs text-red-700 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-lg bg-veda-50 px-3 py-2 text-sm text-foreground/60">No photos yet.</p>
+          )}
+          {pendingPhotos.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {pendingPhotos.map((p) => (
+                <div key={p.key} className="overflow-hidden rounded-xl border border-dashed border-veda-300 bg-veda-50">
+                  <div className="relative aspect-[4/3]">
+                    <RemotePhoto src={p.preview} alt={p.title} className="h-full w-full object-cover" />
+                  </div>
+                  <div className="space-y-1.5 p-2">
+                    <input
+                      className={input}
+                      value={p.title}
+                      maxLength={200}
+                      placeholder="Image title"
+                      onChange={(e) =>
+                        setPendingPhotos((list) =>
+                          list.map((x) => (x.key === p.key ? { ...x, title: e.target.value } : x))
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      onClick={() => dropPending(p.key)}
+                      className="text-xs text-red-700 hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              key={fileInputKey}
+              className={input}
+              type="file"
+              multiple
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={(e) => queuePhotos(e.target.files)}
+            />
+            <button
+              type="button"
+              onClick={() => void uploadPending()}
+              disabled={pendingPhotos.length === 0 || photoBusy}
+              className="rounded-full bg-veda-700 px-4 py-2 text-sm text-white hover:bg-veda-600 disabled:opacity-50"
+            >
+              {photoBusy
+                ? "Uploading\u2026"
+                : pendingPhotos.length > 1
+                  ? `Upload ${pendingPhotos.length} photos`
+                  : "Upload photo"}
+            </button>
+          </div>
+        </section>
+      ) : (
+        <p className="mt-5 rounded-2xl border border-dashed border-veda-200 bg-veda-50 px-4 py-3 text-sm text-foreground/70">
+          Create the listing first, then you can add photos from this page.
+        </p>
+      )}
 
       <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Payments</h2>
@@ -353,28 +655,18 @@ export default function VendorSpaEditPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-veda-900">Treatments &amp; retreats</h2>
             <button
+              type="button"
               className="rounded-full border border-veda-300 px-3 py-1 text-sm hover:bg-veda-50"
-              onClick={() =>
-                setTreatments((list) => [
-                  ...list,
-                  {
-                    categoryId: meta.treatmentCategories[0]?.id ?? 1,
-                    kind: "session",
-                    name: "",
-                    description: "",
-                    durationMinutes: 60,
-                    nights: null,
-                    priceMinor: 5000,
-                    isActive: true,
-                  },
-                ])
-              }
+              onClick={addTreatment}
             >
               + Add
             </button>
           </div>
+          <p className="text-sm text-foreground/60">
+            Save each treatment before adding another. Delete asks for confirmation first.
+          </p>
           {treatments.map((t, i) => (
-            <div key={t.id ?? `new-${i}`} className="space-y-2 rounded-xl border border-veda-100 p-3">
+            <div key={t.id ?? t.clientKey ?? `new-${i}`} className="space-y-2 rounded-xl border border-veda-100 p-3">
               <div className="grid gap-2 sm:grid-cols-2">
                 <input
                   className={input}
@@ -460,12 +752,22 @@ export default function VendorSpaEditPage() {
                   Active
                 </label>
               </div>
-              <button
-                onClick={() => saveTreatment(t, i)}
-                className="rounded-full bg-veda-700 px-4 py-1.5 text-sm text-white hover:bg-veda-600"
-              >
-                Save treatment
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void saveTreatment(t, i)}
+                  className="rounded-full bg-veda-700 px-4 py-1.5 text-sm text-white hover:bg-veda-600"
+                >
+                  Save treatment
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void deleteTreatment(t, i)}
+                  className="rounded-full border border-red-200 px-4 py-1.5 text-sm text-red-700 hover:bg-red-50"
+                >
+                  Delete
+                </button>
+              </div>
             </div>
           ))}
         </section>

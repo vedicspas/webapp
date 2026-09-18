@@ -1,6 +1,7 @@
 import type { SpaSummary } from "@vedic/shared";
 import { query } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
+import { publicPhotoUrl } from "./uploads.js";
 
 export interface SpaSummaryRow {
   id: number;
@@ -66,7 +67,7 @@ export function toSpaSummary(row: SpaSummaryRow, amenityIds: number[]): SpaSumma
     countryName: country?.name ?? "",
     lat: Number(row.lat),
     lng: Number(row.lng),
-    coverPhotoUrl: row.coverPhotoUrl,
+    coverPhotoUrl: publicPhotoUrl(row.coverPhotoUrl),
     ratingAvg: Number(row.ratingAvg),
     ratingCount: Number(row.ratingCount),
     priceFromMinor: row.priceFromMinor === null ? null : Number(row.priceFromMinor),
