@@ -104,6 +104,7 @@ export interface Treatment {
   id: number;
   spaId: number;
   categoryId: number;
+  categoryName: string;
   kind: TreatmentKind;
   name: string;
   description: string;
@@ -225,6 +226,7 @@ export interface Booking {
   spaSlug: string;
   treatmentId: number;
   treatmentName: string;
+  treatmentCategoryName: string;
   treatmentKind: TreatmentKind;
   statusCode: BookingStatusCode;
   paymentModeCode: PaymentModeCode;

@@ -73,9 +73,10 @@ Add any number of each:
 - **Session** — a timed appointment (name, category, duration in minutes, price per person).
   Guests book specific start times on a 30-minute grid inside your opening hours. *V1 assumes
   one session at a time* — a booked slot blocks overlapping times.
-- **Retreat** — a multi-night program (name, category, nights, price per person). Retreats are
-  booked against **departures** you create: each departure has a start date and a capacity, and
-  the platform stops selling it when it's full.
+- **Retreat** — a multi-night program (name, category, nights, price per person). After you save
+  the retreat, add **start dates** and a capacity for each date. Guests pick one of those dates
+  on your listing; the platform stops selling a date when it is full. Seeded demo retreats already
+  have monthly departures — retreats you add yourself start with none until you add dates.
 
 Deactivate (rather than delete) a treatment to stop new bookings while keeping history intact.
 

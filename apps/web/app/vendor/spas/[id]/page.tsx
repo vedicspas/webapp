@@ -11,6 +11,12 @@ import { TagInput } from "@/components/TagInput";
 import { toast } from "@/stores/toastStore";
 import type { OnRequestFlag } from "@vedic/shared";
 
+interface RetreatSlot {
+  id: number;
+  startDate: string;
+  capacity: number;
+}
+
 interface VendorTreatment {
   id?: number;
   clientKey?: string;
@@ -22,6 +28,9 @@ interface VendorTreatment {
   nights: number | null;
   priceMinor: number;
   isActive: boolean;
+  slots: RetreatSlot[];
+  newStartDate: string;
+  newCapacity: number;
 }
 
 function blankTreatment(categoryId: number): VendorTreatment {
@@ -35,6 +44,9 @@ function blankTreatment(categoryId: number): VendorTreatment {
     nights: null,
     priceMinor: 5000,
     isActive: true,
+    slots: [],
+    newStartDate: "",
+    newCapacity: 8,
   };
 }
 
@@ -142,6 +154,7 @@ export default function VendorSpaEditPage() {
   );
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(isNew);
+  const [clinicCode, setClinicCode] = useState<string | null>(null);
 
   const set = (patch: Partial<SpaForm>) => setForm((f) => ({ ...f, ...patch }));
 
@@ -157,7 +170,8 @@ export default function VendorSpaEditPage() {
   const load = useCallback(async () => {
     const data = await call<{
       slug?: string;
-      treatments: VendorTreatment[];
+      clinicCode?: string;
+      treatments: Array<Omit<VendorTreatment, "newStartDate" | "newCapacity" | "slots"> & { slots?: RetreatSlot[] }>;
       photos: VendorPhoto[];
       openHours: { weekday: number; openTime: string; closeTime: string }[];
       languages?: { id: number; name: string }[];
@@ -197,7 +211,16 @@ export default function VendorSpaEditPage() {
       familyAccommodation: data.familyAccommodation ?? null,
     });
     setListingSlug(data.slug ?? null);
-    setTreatments(data.treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })));
+    setClinicCode(data.clinicCode ?? null);
+    setTreatments(
+      data.treatments.map((t) => ({
+        ...t,
+        isActive: Boolean(t.isActive),
+        slots: t.slots ?? [],
+        newStartDate: "",
+        newCapacity: 8,
+      }))
+    );
     setPhotos(
       (data.photos ?? []).map((p) => ({
         ...p,
@@ -363,10 +386,14 @@ export default function VendorSpaEditPage() {
     }
     try {
       const body = {
-        ...t,
+        categoryId: t.categoryId,
+        kind: t.kind,
         name: t.name.trim(),
+        description: t.description,
         durationMinutes: t.kind === "session" ? t.durationMinutes : null,
         nights: t.kind === "retreat" ? t.nights : null,
+        priceMinor: t.priceMinor,
+        isActive: t.isActive,
       };
       if (t.id) {
         await call(`/vendor/treatments/${t.id}`, { method: "PUT", body });
@@ -403,6 +430,57 @@ export default function VendorSpaEditPage() {
     }
   }
 
+  async function addRetreatSlot(t: VendorTreatment, index: number) {
+    if (!t.id) {
+      toast("Save the retreat first, then add start dates.", "error");
+      return;
+    }
+    const startDate = t.newStartDate.trim();
+    const capacity = Number(t.newCapacity);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      toast("Choose a start date.", "error");
+      return;
+    }
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      toast("Capacity must be at least 1.", "error");
+      return;
+    }
+    try {
+      const created = await call<RetreatSlot>(`/vendor/treatments/${t.id}/retreat-slots`, {
+        method: "POST",
+        body: { startDate, capacity },
+      });
+      setTreatments((list) =>
+        list.map((x, j) => {
+          if (j !== index) return x;
+          const slots = [...x.slots.filter((s) => s.startDate !== created.startDate), created].sort((a, b) =>
+            a.startDate.localeCompare(b.startDate)
+          );
+          return { ...x, slots, newStartDate: "" };
+        })
+      );
+      toast("Start date added.");
+      await refreshPublicSpaPage(listingSlug);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not add start date", "error");
+    }
+  }
+
+  async function removeRetreatSlot(t: VendorTreatment, index: number, slot: RetreatSlot) {
+    if (!t.id) return;
+    if (!window.confirm(`Remove the ${slot.startDate} start date?`)) return;
+    try {
+      await call(`/vendor/treatments/${t.id}/retreat-slots/${slot.id}`, { method: "DELETE" });
+      setTreatments((list) =>
+        list.map((x, j) => (j === index ? { ...x, slots: x.slots.filter((s) => s.id !== slot.id) } : x))
+      );
+      toast("Start date removed.");
+      await refreshPublicSpaPage(listingSlug);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not remove start date", "error");
+    }
+  }
+
   if (authStatus === "unauthenticated") {
     router.push("/auth/signin");
     return null;
@@ -412,6 +490,13 @@ export default function VendorSpaEditPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <h1 className="text-2xl font-bold text-veda-900">{isNew ? "New spa listing" : `Edit: ${form.name}`}</h1>
+      {clinicCode ? (
+        <p className="mt-1 text-sm text-foreground/60">
+          Clinic ID: <span className="font-medium text-veda-800">{clinicCode}</span>
+        </p>
+      ) : isNew ? (
+        <p className="mt-1 text-sm text-foreground/60">A unique clinic ID (AA + 4 digits) is assigned when you create this listing.</p>
+      ) : null}
 
       <section className="mt-6 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Listing details</h2>
@@ -797,45 +882,64 @@ export default function VendorSpaEditPage() {
           </p>
           {treatments.map((t, i) => (
             <div key={t.id ?? t.clientKey ?? `new-${i}`} className="space-y-2 rounded-xl border border-veda-100 p-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input
-                  className={input}
-                  placeholder="Treatment name"
-                  value={t.name}
-                  onChange={(e) =>
-                    setTreatments((list) => list.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))
-                  }
-                />
-                <select
-                  className={input}
-                  value={t.categoryId}
-                  onChange={(e) =>
-                    setTreatments((list) =>
-                      list.map((x, j) => (j === i ? { ...x, categoryId: Number(e.target.value) } : x))
-                    )
-                  }
-                >
-                  {meta.treatmentCategories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  className={input}
-                  value={t.kind}
-                  onChange={(e) =>
-                    setTreatments((list) =>
-                      list.map((x, j) => (j === i ? { ...x, kind: e.target.value as "session" } : x))
-                    )
-                  }
-                >
-                  <option value="session">Session (time slot)</option>
-                  <option value="retreat">Retreat (multi-day)</option>
-                </select>
+              <div className="grid items-start gap-2 sm:grid-cols-2">
+                <label className={label}>
+                  Treatment name
+                  <input
+                    className={input}
+                    placeholder="Treatment name"
+                    value={t.name}
+                    onChange={(e) =>
+                      setTreatments((list) => list.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))
+                    }
+                  />
+                </label>
+                <label className={label}>
+                  Treatment category
+                  <select
+                    className={input}
+                    value={t.categoryId}
+                    onChange={(e) =>
+                      setTreatments((list) =>
+                        list.map((x, j) => (j === i ? { ...x, categoryId: Number(e.target.value) } : x))
+                      )
+                    }
+                  >
+                    {meta.treatmentCategories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className={label}>
+                  Type
+                  <select
+                    className={input}
+                    value={t.kind}
+                    onChange={(e) => {
+                      const kind = e.target.value as "session" | "retreat";
+                      setTreatments((list) =>
+                        list.map((x, j) =>
+                          j === i
+                            ? {
+                                ...x,
+                                kind,
+                                durationMinutes: kind === "session" ? x.durationMinutes || 60 : null,
+                                nights: kind === "retreat" ? x.nights || 3 : null,
+                              }
+                            : x
+                        )
+                      );
+                    }}
+                  >
+                    <option value="session">Session (time slot)</option>
+                    <option value="retreat">Retreat (multi-day)</option>
+                  </select>
+                </label>
                 {t.kind === "session" ? (
                   <div>
-                    <span className="mb-1 block text-xs font-medium text-veda-800">Duration</span>
+                    <span className="mb-1 block text-sm font-medium">Duration</span>
                     <PostfixInput
                       suffix="Minutes"
                       placeholder="60"
@@ -850,7 +954,7 @@ export default function VendorSpaEditPage() {
                   </div>
                 ) : (
                   <div>
-                    <span className="mb-1 block text-xs font-medium text-veda-800">Length</span>
+                    <span className="mb-1 block text-sm font-medium">Length</span>
                     <PostfixInput
                       suffix="Nights"
                       placeholder="3"
@@ -865,7 +969,7 @@ export default function VendorSpaEditPage() {
                   </div>
                 )}
                 <div>
-                  <span className="mb-1 block text-xs font-medium text-veda-800">Amount</span>
+                  <span className="mb-1 block text-sm font-medium">Amount</span>
                   <DollarInput
                     valueMinor={t.priceMinor}
                     onChangeMinor={(minor) =>
@@ -876,7 +980,7 @@ export default function VendorSpaEditPage() {
                     aria-label="Amount"
                   />
                 </div>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex h-[42px] items-center gap-2 text-sm">
                   <input
                     type="checkbox"
                     checked={t.isActive}
@@ -889,6 +993,79 @@ export default function VendorSpaEditPage() {
                   Active
                 </label>
               </div>
+              {t.kind === "retreat" ? (
+                <div className="rounded-lg border border-veda-100 bg-veda-50/40 p-3">
+                  <p className="text-sm font-medium">Start dates</p>
+                  <p className="mt-0.5 text-xs text-foreground/55">
+                    Guests pick one of these dates on the listing. Capacity is how many people can start that day.
+                  </p>
+                  {!t.id ? (
+                    <p className="mt-2 text-sm text-foreground/60">Save this retreat first, then add start dates.</p>
+                  ) : (
+                    <>
+                      {t.slots.length === 0 ? (
+                        <p className="mt-2 text-sm text-foreground/60">No start dates yet.</p>
+                      ) : (
+                        <ul className="mt-2 space-y-1">
+                          {t.slots.map((slot) => (
+                            <li key={slot.id} className="flex items-center justify-between gap-2 text-sm">
+                              <span>
+                                {slot.startDate} · {slot.capacity} spot{slot.capacity === 1 ? "" : "s"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => void removeRetreatSlot(t, i, slot)}
+                                className="text-red-700 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <div className="mt-2 grid items-end gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                        <label className={label}>
+                          Date
+                          <input
+                            type="date"
+                            className={input}
+                            value={t.newStartDate}
+                            onChange={(e) =>
+                              setTreatments((list) =>
+                                list.map((x, j) => (j === i ? { ...x, newStartDate: e.target.value } : x))
+                              )
+                            }
+                          />
+                        </label>
+                        <label className={label}>
+                          Capacity
+                          <input
+                            type="number"
+                            min={1}
+                            max={500}
+                            className={input}
+                            value={t.newCapacity}
+                            onChange={(e) =>
+                              setTreatments((list) =>
+                                list.map((x, j) =>
+                                  j === i ? { ...x, newCapacity: Number(e.target.value) || 0 } : x
+                                )
+                              )
+                            }
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => void addRetreatSlot(t, i)}
+                          className="rounded-full border border-veda-300 px-4 py-2 text-sm hover:bg-veda-50"
+                        >
+                          Add date
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : null}
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
