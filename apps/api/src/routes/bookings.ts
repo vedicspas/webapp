@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { allocateBookingCode } from "../lib/bookingRefs.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { AvailabilitySlot, Booking, CreateBookingResponse } from "@vedic/shared";
@@ -19,6 +19,7 @@ interface BookingRow {
   treatment_id: number;
   treatment_name: string;
   treatment_kind: "session" | "retreat";
+  treatment_category_id: number;
   status_id: number;
   payment_mode_id: number;
   starts_at: string;
@@ -33,6 +34,7 @@ interface BookingRow {
 const BOOKING_SELECT = `
   SELECT b.id, b.code, b.spa_id, s.name AS spa_name, s.slug AS spa_slug,
     b.treatment_id, t.name AS treatment_name, t.kind AS treatment_kind,
+    t.category_id AS treatment_category_id,
     b.status_id, b.payment_mode_id, b.starts_at, b.ends_at, b.party_size,
     b.total_minor, b.paid_minor, b.currency_id, b.created_at
   FROM bookings b
@@ -49,6 +51,7 @@ export function toBooking(row: BookingRow): Booking {
     spaSlug: row.spa_slug,
     treatmentId: row.treatment_id,
     treatmentName: row.treatment_name,
+    treatmentCategoryName: staticCache.treatmentCategoryName(row.treatment_category_id),
     treatmentKind: row.treatment_kind,
     statusCode: (staticCache.bookingStatus(row.status_id)?.code ?? "pending_payment") as Booking["statusCode"],
     paymentModeCode: (staticCache.paymentMode(row.payment_mode_id)?.code ?? "pay_at_spa") as Booking["paymentModeCode"],
@@ -191,6 +194,7 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     const spa = await queryOne<{
       id: number;
       name: string;
+      clinic_code: string;
       payment_mode_id: number;
       deposit_bps: number | null;
       booking_fee_minor: number | null;
@@ -198,7 +202,7 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
       stripe_account_id: string | null;
       stripe_onboarded: number;
     }>(
-      `SELECT s.id, s.name, s.payment_mode_id, s.deposit_bps, s.booking_fee_minor, s.currency_id,
+      `SELECT s.id, s.name, s.clinic_code, s.payment_mode_id, s.deposit_bps, s.booking_fee_minor, s.currency_id,
          v.stripe_account_id, v.stripe_onboarded
        FROM spas s JOIN vendors v ON v.id = s.vendor_id
        WHERE s.id = ? AND s.is_published = 1 AND v.status = 'approved'`,
@@ -235,9 +239,9 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
          FROM retreat_slots rs WHERE rs.treatment_id = ? AND rs.start_date = ?`,
         [staticCache.bookingStatusByCode("cancelled")!.id, treatment.id, date]
       );
-      if (!slot) return reply.code(400).send({ error: "No retreat departure on that date" });
+      if (!slot) return reply.code(400).send({ error: "No start date is listed for that program" });
       if (Number(slot.booked) + body.partySize > slot.capacity) {
-        return reply.code(409).send({ error: "Not enough places left on this departure" });
+        return reply.code(409).send({ error: "Not enough spots left on that start date" });
       }
       startsAt = new Date(`${date}T14:00:00Z`); // standard check-in
       endsAt = new Date(startsAt.getTime() + (treatment.nights ?? 1) * 24 * 3600_000 - 2 * 3600_000);
@@ -269,7 +273,7 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const currency = staticCache.currency(spa.currency_id)!;
-    const code = randomBytes(5).toString("hex").toUpperCase();
+    const code = await allocateBookingCode(spa.clinic_code);
     const needsPayment = payNowMinor > 0 && stripe !== null;
     const statusCode = payNowMinor > 0 && stripe !== null ? "pending_payment" : "confirmed";
     const statusId = staticCache.bookingStatusByCode(statusCode)!.id;

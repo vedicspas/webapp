@@ -69,7 +69,7 @@ async function main() {
      ('abhyanga','Abhyanga Massage'), ('shirodhara','Shirodhara'), ('panchakarma','Panchakarma'),
      ('udvartana','Udvartana'), ('nasya','Nasya'), ('marma','Marma Therapy'),
      ('yoga-retreat','Yoga & Meditation Retreat'), ('detox-retreat','Detox Retreat'),
-     ('consultation','Ayurvedic Consultation')`,
+     ('consultation','Ayurvedic Consultation'), ('other','Other')`,
     []
   );
 
@@ -239,12 +239,12 @@ async function main() {
     const description = `${s.short}\n\n${s.name} follows classical Ayurvedic protocols with personalised dosha assessments, treatments performed by trained therapists, and herbal preparations made from certified organic ingredients. Every guest begins with a consultation so treatments can be tailored to their constitution and health goals.`;
     const id = await insert(
       `INSERT INTO spas
-        (vendor_id, slug, name, short_description, description, address_line, postal_code, city_id,
+        (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code, city_id,
          lat, lng, phone, email, website, shopify_collection_handle, payment_mode_id, deposit_bps,
          booking_fee_minor, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
       [
-        s.vendorId, s.slug, s.name, s.short, description,
+        s.vendorId, `AA${String(spaIds.size + 1).padStart(4, "0")}`, s.slug, s.name, s.short, description,
         `12 Wellness Lane`, "00000", cityIds.get(s.city),
         s.lat, s.lng, "+1 555 0100", `hello@${s.slug}.test`, `https://${s.slug}.test`,
         s.shopifyHandle, modeIds.get(s.mode), s.depositBps ?? null,

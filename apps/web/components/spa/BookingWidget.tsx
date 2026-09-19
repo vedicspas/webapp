@@ -13,6 +13,7 @@ import type {
 import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay } from "@/lib/format";
 import { toast } from "@/stores/toastStore";
 import { PaymentForm } from "./PaymentForm";
+import { TreatmentCaption } from "@/components/TreatmentCaption";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -128,7 +129,8 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         <p className="text-3xl">&#127881;</p>
         <h3 className="mt-1 text-lg font-semibold text-veda-900">Booking confirmed</h3>
         <p className="mt-2 text-sm text-foreground/75">
-          {result.booking.treatmentName} at {result.booking.spaName} on{" "}
+          <TreatmentCaption name={result.booking.treatmentName} categoryName={result.booking.treatmentCategoryName} />
+          {" "}at {result.booking.spaName} on{" "}
           <strong>{shortDate(result.booking.startsAt)}</strong>
           {result.booking.treatmentKind === "session" ? (
             <> at {timeOfDay(result.booking.startsAt)}</>
@@ -136,7 +138,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           .
         </p>
         <p className="mt-2 rounded-lg bg-veda-50 px-3 py-2 text-sm">
-          Confirmation code: <strong>{result.booking.code}</strong>
+          Booking ref number: <strong>{result.booking.code}</strong>
         </p>
         <button
           onClick={() => router.push("/account/bookings")}
@@ -184,13 +186,17 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           onChange={(e) => {
             setTreatmentId(Number(e.target.value));
             setSelectedStart(null);
+            setDate("");
           }}
           className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
         >
           {treatments.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name} &mdash; {money(t.priceMinor, spa.currencyCode)}
-              {t.kind === "retreat" ? " / person" : ""}
+              {t.name}
+              {t.categoryName ? ` - ${t.categoryName}` : ""}
+              {" — "}
+              {money(t.priceMinor, spa.currencyCode)}
+              {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : ""}
             </option>
           ))}
         </select>
@@ -241,35 +247,32 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         </>
       ) : treatment ? (
         <div className="mt-3">
-          <p className="text-sm font-medium">
-            Departures ({treatment.nights} nights)
-          </p>
-          {retreatSlots.length === 0 ? (
-            <p className="mt-1 text-sm text-foreground/60">No departures scheduled yet.</p>
-          ) : (
-            <div className="mt-1 space-y-1.5">
+          <label className="block text-sm font-medium">
+            Start date
+            <select
+              value={selectedStart ?? ""}
+              onChange={(e) => setSelectedStart(e.target.value || null)}
+              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
+            >
+              <option value="">Choose a start date</option>
               {retreatSlots.map((slot) => {
                 const left = slot.capacity - slot.bookedCount;
                 return (
-                  <button
-                    key={slot.id}
-                    disabled={left <= 0}
-                    onClick={() => setSelectedStart(slot.startDate)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                      selectedStart === slot.startDate
-                        ? "bg-veda-700 text-white"
-                        : "border border-veda-200 hover:bg-veda-50 disabled:opacity-40"
-                    }`}
-                  >
-                    <span>{shortDate(slot.startDate)}</span>
-                    <span className={selectedStart === slot.startDate ? "text-veda-100" : "text-veda-600"}>
-                      {left > 0 ? `${left} places left` : "Sold out"}
-                    </span>
-                  </button>
+                  <option key={slot.id} value={slot.startDate} disabled={left <= 0}>
+                    {shortDate(slot.startDate)}
+                    {left > 0 ? ` · ${left} spot${left === 1 ? "" : "s"} available` : " · full"}
+                  </option>
                 );
               })}
-            </div>
-          )}
+            </select>
+          </label>
+          <p className="mt-1.5 text-xs text-foreground/55">
+            This is a {treatment.nights}-night stay at the clinic. Pick a start date the clinic has
+            opened for this program.
+          </p>
+          {retreatSlots.length === 0 ? (
+            <p className="mt-1 text-sm text-foreground/60">No start dates are listed yet.</p>
+          ) : null}
         </div>
       ) : null}
 

@@ -88,6 +88,73 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   await conn.query(insertIgnore("languages", LANGUAGE_NAMES));
   await conn.query(insertIgnore("dietary_options", DIETARY_NAMES));
   await conn.query(insertIgnore("accommodation_types", ACCOMMODATION_NAMES));
+
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS clinic_code CHAR(6) NULL");
+  const [spaRows] = await conn.query("SELECT id FROM spas WHERE clinic_code IS NULL OR clinic_code = ''");
+  if (Array.isArray(spaRows)) {
+    const used = new Set<string>();
+    const [existingCodes] = await conn.query("SELECT clinic_code FROM spas WHERE clinic_code IS NOT NULL AND clinic_code <> ''");
+    if (Array.isArray(existingCodes)) {
+      for (const row of existingCodes as { clinic_code: string }[]) used.add(row.clinic_code);
+    }
+    function nextClinicCode(): string {
+      for (let n = 0; n < 10000; n++) {
+        const code = `AA${String(n).padStart(4, "0")}`;
+        if (!used.has(code)) {
+          used.add(code);
+          return code;
+        }
+      }
+      throw new Error("No clinic IDs remaining");
+    }
+    for (const row of spaRows as { id: number }[]) {
+      const code = nextClinicCode();
+      await conn.query("UPDATE spas SET clinic_code = ? WHERE id = ?", [code, row.id]);
+    }
+  }
+  await run(conn, "ALTER TABLE spas MODIFY COLUMN clinic_code CHAR(6) NOT NULL");
+  await run(conn, "ALTER TABLE spas ADD UNIQUE KEY uq_spa_clinic_code (clinic_code)");
+  await run(conn, "ALTER TABLE bookings MODIFY COLUMN code VARCHAR(24) NOT NULL");
+
+  const [bookingRows] = await conn.query(
+    `SELECT b.id, b.code, b.created_at, s.clinic_code
+     FROM bookings b JOIN spas s ON s.id = b.spa_id`
+  );
+  if (Array.isArray(bookingRows)) {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    const usedCodes = new Set(
+      (bookingRows as { code: string }[])
+        .map((r) => r.code)
+        .filter((c) => /^[A-Z]{2}\d{4}-\d{6}-[A-Z0-9]{4}$/.test(c))
+    );
+    function stamp(d: Date): string {
+      const y = d.getUTCFullYear() % 100;
+      const m = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      return `${String(y).padStart(2, "0")}${String(m).padStart(2, "0")}${String(day).padStart(2, "0")}`;
+    }
+    function suffix(): string {
+      let s = "";
+      for (let i = 0; i < 4; i++) s += chars[Math.floor(Math.random() * chars.length)];
+      return s;
+    }
+    for (const row of bookingRows as { id: number; code: string; created_at: Date | string; clinic_code: string }[]) {
+      if (/^[A-Z]{2}\d{4}-\d{6}-[A-Z0-9]{4}$/.test(row.code)) continue;
+      const at = row.created_at instanceof Date ? row.created_at : new Date(row.created_at);
+      let next = "";
+      for (let i = 0; i < 40; i++) {
+        next = `${row.clinic_code}-${stamp(at)}-${suffix()}`;
+        if (!usedCodes.has(next)) break;
+      }
+      usedCodes.add(next);
+      await conn.query("UPDATE bookings SET code = ? WHERE id = ?", [next, row.id]);
+    }
+  }
+
+  await conn.query(
+    "INSERT IGNORE INTO treatment_categories (slug, name) VALUES ('other', 'Other')"
+  );
+
   console.log("Schema patches applied.");
 }
 

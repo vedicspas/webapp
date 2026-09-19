@@ -246,7 +246,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
         [row.id]
       ),
-      query<Treatment>(
+      query<Omit<Treatment, "categoryName">>(
         `SELECT id, spa_id AS spaId, category_id AS categoryId, kind, name, description,
            duration_minutes AS durationMinutes, nights, price_minor AS priceMinor,
            is_active AS isActive
@@ -279,7 +279,11 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         alt: p.alt,
         sortOrder: p.sortOrder,
       })),
-      treatments: treatments.map((t) => ({ ...t, isActive: Boolean(t.isActive) })),
+      treatments: treatments.map((t) => ({
+        ...t,
+        isActive: Boolean(t.isActive),
+        categoryName: staticCache.treatmentCategoryName(t.categoryId),
+      })),
       openHours: hours,
       ...stay,
     };

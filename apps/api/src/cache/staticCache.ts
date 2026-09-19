@@ -35,6 +35,7 @@ class StaticCache {
     currencies: new Map<number, Currency>(),
     paymentModes: new Map<number, PaymentMode>(),
     bookingStatuses: new Map<number, BookingStatus>(),
+    treatmentCategories: new Map<number, TreatmentCategory>(),
   };
 
   async reload(): Promise<void> {
@@ -71,7 +72,11 @@ class StaticCache {
     this.countries = countries;
     this.cities = cities;
     this.amenities = amenities;
-    this.treatmentCategories = categories;
+    this.treatmentCategories = [...categories].sort((a, b) => {
+      if (a.slug === "other") return 1;
+      if (b.slug === "other") return -1;
+      return a.name.localeCompare(b.name);
+    });
     this.paymentModes = modes;
     this.bookingStatuses = statuses;
     this.currencies = currencies;
@@ -84,6 +89,15 @@ class StaticCache {
     this.byId.currencies = new Map(currencies.map((c) => [c.id, c]));
     this.byId.paymentModes = new Map(modes.map((m) => [m.id, m]));
     this.byId.bookingStatuses = new Map(statuses.map((s) => [s.id, s]));
+    this.byId.treatmentCategories = new Map(this.treatmentCategories.map((c) => [c.id, c]));
+  }
+
+  treatmentCategory(id: number): TreatmentCategory | undefined {
+    return this.byId.treatmentCategories.get(id);
+  }
+
+  treatmentCategoryName(id: number): string {
+    return this.treatmentCategory(id)?.name ?? "Other";
   }
 
   city(id: number): City | undefined {

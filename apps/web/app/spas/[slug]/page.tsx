@@ -10,7 +10,8 @@ import { BookingWidget } from "@/components/spa/BookingWidget";
 import { ReviewsSection } from "@/components/spa/ReviewsSection";
 import { QASection } from "@/components/spa/QASection";
 import { ShopSection } from "@/components/spa/ShopSection";
-import { WEEKDAYS } from "@/lib/format";
+import { WEEKDAYS, money } from "@/lib/format";
+import { TreatmentCaption } from "@/components/TreatmentCaption";
 
 // Booking inventory (treatments) must not stay stale after a vendor deletes one.
 export const dynamic = "force-dynamic";
@@ -76,6 +77,25 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
           <AmenityList amenityIds={spa.amenityIds} />
 
           <StayDetails spa={spa} />
+
+          <h2 className="mt-8 text-lg font-semibold text-veda-900">Treatments</h2>
+          <ul className="mt-2 space-y-2">
+            {spa.treatments.map((t) => (
+              <li key={t.id} className="rounded-xl border border-veda-100 bg-white px-4 py-3">
+                <p className="font-medium text-veda-900">
+                  <TreatmentCaption name={t.name} categoryName={t.categoryName} />
+                </p>
+                <p className="mt-0.5 text-sm text-foreground/60">
+                  {money(t.priceMinor, spa.currencyCode)}
+                  {t.kind === "session" && t.durationMinutes ? ` · ${t.durationMinutes} min` : null}
+                  {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : null}
+                </p>
+              </li>
+            ))}
+            {spa.treatments.length === 0 ? (
+              <li className="text-sm text-foreground/60">No treatments listed yet.</li>
+            ) : null}
+          </ul>
 
           <h2 className="mt-8 text-lg font-semibold text-veda-900">Opening hours</h2>
           <ul className="mt-2 grid max-w-md grid-cols-1 gap-1 text-sm sm:grid-cols-2">

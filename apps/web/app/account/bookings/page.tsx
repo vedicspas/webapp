@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSession } from "next-auth/react";
 import type { Booking } from "@vedic/shared";
 import { money, shortDate, timeOfDay, PAYMENT_MODE_LABELS } from "@/lib/format";
+import { TreatmentCaption } from "@/components/TreatmentCaption";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -74,7 +75,8 @@ export default function MyBookingsPage() {
                 </span>
               </div>
               <p className="mt-1 text-sm text-foreground/75">
-                {b.treatmentName} &middot; {shortDate(b.startsAt)}
+                <TreatmentCaption name={b.treatmentName} categoryName={b.treatmentCategoryName} /> &middot;{" "}
+                {shortDate(b.startsAt)}
                 {b.treatmentKind === "session" ? <> at {timeOfDay(b.startsAt)}</> : null} &middot;{" "}
                 {b.partySize} {b.partySize === 1 ? "guest" : "guests"}
               </p>
@@ -83,7 +85,9 @@ export default function MyBookingsPage() {
                 {b.paidMinor > 0 ? <> &middot; paid {money(b.paidMinor, b.currencyCode)}</> : null}{" "}
                 &middot; <span className="text-foreground/60">{PAYMENT_MODE_LABELS[b.paymentModeCode]}</span>
               </p>
-              <p className="mt-1 text-xs text-foreground/50">Code {b.code}</p>
+              <p className="mt-1 text-sm font-medium text-veda-800">
+                Booking ref number: {b.code}
+              </p>
             </div>
           ))
         )}
