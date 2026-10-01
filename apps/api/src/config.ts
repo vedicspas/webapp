@@ -65,6 +65,10 @@ export const config = {
     defaultBookingFeeMinor: Number(process.env.DEFAULT_BOOKING_FEE_MINOR ?? "500"),
   },
   // Spa listing photos are stored on the local disk (not S3/blob). Docker
-  // mounts a volume here so files survive container rebuilds.
+  // mounts a volume here so files survive container rebuilds. Review photos
+  // live in a reviews/ subdirectory of the same tree.
   uploadDir: process.env.UPLOAD_DIR ?? join(here, "../../../uploads"),
+  reviewUploadDir:
+    process.env.REVIEW_UPLOAD_DIR ??
+    join(process.env.UPLOAD_DIR ?? join(here, "../../../uploads"), "reviews"),
 };

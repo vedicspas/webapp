@@ -132,6 +132,25 @@ class StaticCache {
     return this.roles.find((r) => r.code === code);
   }
 
+  /**
+   * Resolves a role by code, reloading lookup tables if the cache was empty
+   * (e.g. the API started before `db:seed`). Throws a clear error if the role
+   * still does not exist.
+   */
+  async requireRole(code: string): Promise<Role> {
+    let role = this.roleByCode(code);
+    if (!role) {
+      await this.reload();
+      role = this.roleByCode(code);
+    }
+    if (!role) {
+      throw new Error(
+        `Missing role "${code}". Seed the database and restart the API.`
+      );
+    }
+    return role;
+  }
+
   toMeta(): StaticMeta {
     return {
       countries: this.countries,

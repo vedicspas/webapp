@@ -65,14 +65,17 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const asVendor = body.intent === "vendor";
-    const roleId = staticCache.roleByCode(asVendor ? "vendor" : "traveler")!.id;
+    const roleId = (await staticCache.requireRole(asVendor ? "vendor" : "traveler")).id;
     const hash = await bcrypt.hash(body.password, 10);
     const result = await execute(
       "INSERT INTO users (role_id, email, password_hash, name, username) VALUES (?,?,?,?,?)",
       [roleId, body.email, hash, body.name, usernameFrom(body.email)]
     );
     if (asVendor) await ensureVendorAccount(result.insertId, body.name);
-    const row = (await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]))!;
+    const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
+    if (!row) {
+      return reply.code(500).send({ error: "Failed to load the created account" });
+    }
     return { ...(await sessionPayload(row)), created: true };
   });
 
@@ -89,7 +92,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // Upsert used by the Auth.js Google provider on the web app.
-  app.post("/auth/oauth", async (request) => {
+  app.post("/auth/oauth", async (request, reply) => {
     const body = z
       .object({
         email: z.string().email(),
@@ -104,13 +107,16 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!row) {
       created = true;
       const asVendor = body.intent === "vendor";
-      const roleId = staticCache.roleByCode(asVendor ? "vendor" : "traveler")!.id;
+      const roleId = (await staticCache.requireRole(asVendor ? "vendor" : "traveler")).id;
       const result = await execute(
         "INSERT INTO users (role_id, email, name, username, avatar_url) VALUES (?,?,?,?,?)",
         [roleId, body.email, body.name, usernameFrom(body.email), body.avatarUrl ?? null]
       );
       if (asVendor) await ensureVendorAccount(result.insertId, body.name);
-      row = (await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]))!;
+      row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
+    }
+    if (!row) {
+      return reply.code(500).send({ error: "Failed to load the created account" });
     }
     return { ...(await sessionPayload(row)), created };
   });

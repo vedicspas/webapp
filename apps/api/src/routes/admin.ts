@@ -3,6 +3,7 @@ import { z } from "zod";
 import { execute, query, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
+import { assertCanModerate } from "../lib/reviewValidation.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -269,7 +270,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       values
     );
     const items = await query(
-      `SELECT rv.id, rv.rating, rv.title, rv.body, rv.created_at AS createdAt,
+      `SELECT rv.id, rv.rating, rv.title, rv.body, rv.status, rv.created_at AS createdAt,
+         rv.moderated_at AS moderatedAt, rv.moderation_reason AS moderationReason,
          u.name AS authorName, u.email AS authorEmail,
          s.name AS spaName, s.slug AS spaSlug, s.clinic_code AS clinicCode
        FROM reviews rv
@@ -287,6 +289,40 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       pageSize,
       total: Number(totalRow?.n ?? 0),
     };
+  });
+
+  app.patch("/admin/reviews/:id", async (request, reply) => {
+    try {
+      assertCanModerate(request.user);
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode ?? 403;
+      return reply.code(status).send({ error: err instanceof Error ? err.message : "Forbidden" });
+    }
+    const reviewId = Number((request.params as { id: string }).id);
+    const body = z
+      .object({
+        status: z.enum(["published", "hidden"]),
+        reason: z.string().trim().max(500).optional(),
+      })
+      .parse(request.body);
+
+    const current = await queryOne<{ status: "published" | "hidden" }>(
+      "SELECT status FROM reviews WHERE id = ?",
+      [reviewId]
+    );
+    if (!current) return reply.code(404).send({ error: "Review not found" });
+
+    await execute(
+      `UPDATE reviews SET status = ?, moderated_at = UTC_TIMESTAMP(), moderated_by = ?, moderation_reason = ?
+       WHERE id = ?`,
+      [body.status, request.user!.id, body.reason ?? null, reviewId]
+    );
+    await execute(
+      `INSERT INTO review_moderation_events (review_id, admin_user_id, from_status, to_status, reason)
+       VALUES (?,?,?,?,?)`,
+      [reviewId, request.user!.id, current.status, body.status, body.reason ?? null]
+    );
+    return { ok: true };
   });
 
   app.delete("/admin/reviews/:id", async (request, reply) => {

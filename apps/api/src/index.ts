@@ -22,6 +22,7 @@ async function main() {
   const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
 
   mkdirSync(config.uploadDir, { recursive: true });
+  mkdirSync(config.reviewUploadDir, { recursive: true });
 
   await app.register(cors, {
     origin: [config.webOrigin],
@@ -33,7 +34,7 @@ async function main() {
   });
 
   await app.register(multipart, {
-    limits: { fileSize: 8 * 1024 * 1024, files: 1 },
+    limits: { fileSize: 8 * 1024 * 1024, files: 5, fieldSize: 64 * 1024 },
   });
 
   await app.register(fastifyStatic, {
@@ -45,8 +46,13 @@ async function main() {
   // Load static lookup tables into memory before accepting traffic.
   await staticCache.reload();
   app.log.info(
-    `Static cache loaded: ${staticCache.cities.length} cities, ${staticCache.amenities.length} amenities, ${staticCache.treatmentCategories.length} categories`
+    `Static cache loaded: ${staticCache.roles.length} roles, ${staticCache.cities.length} cities, ${staticCache.amenities.length} amenities, ${staticCache.treatmentCategories.length} categories`
   );
+  if (staticCache.roles.length === 0) {
+    app.log.warn(
+      "Roles table is empty. Run db:seed (then restart, or the next request will reload the cache)."
+    );
+  }
 
   app.decorateRequest("user", null);
   app.addHook("preHandler", optionalAuth);

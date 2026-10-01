@@ -14,8 +14,25 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "fastly.picsum.photos" },
       { protocol: "https", hostname: "i.pravatar.cc" },
       { protocol: "https", hostname: "cdn.shopify.com" },
+      ...apiUploadPattern(),
     ],
   },
 };
+
+function apiUploadPattern(): NonNullable<NextConfig["images"]>["remotePatterns"] {
+  try {
+    const api = new URL(process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100");
+    return [
+      {
+        protocol: api.protocol.replace(":", "") as "http" | "https",
+        hostname: api.hostname,
+        ...(api.port ? { port: api.port } : {}),
+        pathname: "/uploads/**",
+      },
+    ];
+  } catch {
+    return [];
+  }
+}
 
 export default nextConfig;

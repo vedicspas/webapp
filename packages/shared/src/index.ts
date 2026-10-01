@@ -1,5 +1,8 @@
 // Shared types between the Fastify API (apps/api) and the Next.js web app (apps/web).
 
+export * from "./reviews.js";
+import type { ReviewAspectId } from "./reviews.js";
+
 // ---------- Static lookup tables (cached in memory by the API at startup) ----------
 
 export interface Country {
@@ -169,6 +172,13 @@ export interface OpenHours {
   closeTime: string; // "18:00"
 }
 
+export interface ReviewPhoto {
+  id: number;
+  url: string;
+  alt: string;
+  sortOrder: number;
+}
+
 export interface Review {
   id: number;
   spaId: number;
@@ -176,9 +186,28 @@ export interface Review {
   title: string;
   body: string;
   visitedOn: string | null;
+  recommends: boolean | null;
+  aspects: Record<ReviewAspectId, number | null>;
+  photos: ReviewPhoto[];
   createdAt: string;
   user: PublicUser;
   response: ReviewResponse | null;
+}
+
+export interface ReviewSummary {
+  ratingAvg: number;
+  ratingCount: number;
+  recommendPercent: number | null;
+  distribution: Record<1 | 2 | 3 | 4 | 5, number>;
+  aspectAvgs: Record<ReviewAspectId, number | null>;
+}
+
+export interface ReviewListResponse {
+  items: Review[];
+  page: number;
+  pageSize: number;
+  total: number;
+  summary: ReviewSummary;
 }
 
 export interface ReviewResponse {

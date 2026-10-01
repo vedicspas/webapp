@@ -52,7 +52,10 @@ interface AdminReview {
   rating: number;
   title: string;
   body: string;
+  status: "published" | "hidden";
   createdAt: string;
+  moderatedAt: string | null;
+  moderationReason: string | null;
   authorName: string;
   authorEmail: string;
   spaName: string;
@@ -261,8 +264,27 @@ export default function AdminPage() {
     }
   }
 
+  async function setReviewStatus(id: number, status: "published" | "hidden") {
+    const reason =
+      status === "hidden"
+        ? window.prompt("Optional internal reason for hiding this review:") ?? undefined
+        : undefined;
+    if (status === "hidden" && reason === undefined) return;
+    try {
+      await call(`/admin/reviews/${id}`, {
+        method: "PATCH",
+        body: { status, reason: reason?.trim() || undefined },
+      });
+      toast(status === "hidden" ? "Review hidden." : "Review restored.");
+      loadStats();
+      loadTab();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not update review", "error");
+    }
+  }
+
   async function deleteReview(id: number) {
-    if (!confirm("Delete this review permanently?")) return;
+    if (!confirm("Permanently delete this review? This cannot be undone.")) return;
     try {
       await call(`/admin/reviews/${id}`, { method: "DELETE" });
       toast("Review deleted.");
@@ -542,18 +564,43 @@ export default function AdminPage() {
                 <p className="mt-1 font-medium text-veda-900">{r.title}</p>
                 <p className="mt-1 text-sm text-foreground/80">{r.body}</p>
                 <p className="mt-1 text-xs text-foreground/50">
+                  {r.status === "hidden" ? (
+                    <span className="mr-2 rounded-full bg-red-100 px-2 py-0.5 text-red-700">hidden</span>
+                  ) : (
+                    <span className="mr-2 rounded-full bg-veda-100 px-2 py-0.5 text-veda-800">published</span>
+                  )}
                   by {r.authorName} ({r.authorEmail}) on{" "}
                   <Link href={`/spas/${r.spaSlug}`} className="text-veda-600 hover:underline">
                     {r.spaName}
                   </Link>{" "}
                   · Clinic ID {r.clinicCode}
                 </p>
-                <button
-                  onClick={() => deleteReview(r.id)}
-                  className="mt-2 rounded-full border border-red-300 px-4 py-1 text-xs text-red-700 hover:bg-red-50"
-                >
-                  Delete review
-                </button>
+                {r.moderationReason ? (
+                  <p className="mt-1 text-xs text-foreground/50">Internal reason: {r.moderationReason}</p>
+                ) : null}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {r.status === "published" ? (
+                    <button
+                      onClick={() => setReviewStatus(r.id, "hidden")}
+                      className="rounded-full border border-veda-300 px-4 py-1 text-xs hover:bg-veda-50"
+                    >
+                      Hide review
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setReviewStatus(r.id, "published")}
+                      className="rounded-full border border-veda-300 px-4 py-1 text-xs hover:bg-veda-50"
+                    >
+                      Restore review
+                    </button>
+                  )}
+                  <button
+                    onClick={() => deleteReview(r.id)}
+                    className="rounded-full border border-red-300 px-4 py-1 text-xs text-red-700 hover:bg-red-50"
+                  >
+                    Delete permanently
+                  </button>
+                </div>
               </div>
             ))}
           </div>

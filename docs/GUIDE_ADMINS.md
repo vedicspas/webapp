@@ -51,9 +51,10 @@ normally belong to vendors; use this for moderation.
 
 ### Reviews tab
 
-The 100 most recent reviews with author emails. **Delete** removes a review permanently
-(including the vendor's response and its effect on the spa's average rating). There is no
-undo — reserve it for spam, harassment, or fake reviews, not negative-but-genuine feedback.
+The 100 most recent reviews with author emails and publish status. **Hide** takes a review off
+the public clinic page and out of all rating calculations (optional internal reason). **Restore**
+puts it back. **Delete permanently** cannot be undone — reserve it for spam, harassment, or fake
+reviews, not negative-but-genuine feedback.
 
 ### Bookings tab
 
