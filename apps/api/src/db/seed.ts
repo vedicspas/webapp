@@ -317,27 +317,66 @@ async function main() {
   }
 
   // ---- Reviews (with a vendor response), Q&A, wishlists ----
-  const reviewSeeds: Array<[string, number, number, string, string]> = [
-    ["ganga-veda-rishikesh", travelerAId, 5, "Life-changing panchakarma", "The doctors took time to explain every step. The riverside setting makes the daily treatments unforgettable."],
-    ["ganga-veda-rishikesh", travelerBId, 4, "Wonderful, book early", "Excellent therapists and food. Rooms are simple. Book the retreat months ahead \u2014 it fills up."],
-    ["kerala-roots-kochi", travelerBId, 5, "The real deal", "This is a proper Ayurvedic hospital, not a tourist spa. Strict but incredibly effective 14-night program."],
-    ["palm-shala-goa", travelerAId, 4, "Great value abhyanga", "Lovely open-air shala and skilled therapists. Sunset yoga after shirodhara is perfect."],
-    ["ubud-prana-retreat", travelerAId, 5, "Jungle magic", "The blend of Balinese and Ayurvedic techniques works beautifully. The herbal meals alone are worth it."],
-    ["red-rock-veda-sedona", travelerBId, 4, "Pricey but excellent", "Best marma work I have had in the US. Sedona energy is a bonus."],
-  ];
+  const reviewInsert = `INSERT INTO reviews (
+      spa_id, user_id, rating,
+      rating_treatments, rating_practitioners, rating_staff, rating_food, rating_accommodations,
+      rating_cleanliness, rating_location, rating_transport, rating_communication, rating_value,
+      recommends, confirmed_genuine, title, body, visited_on, status
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?,'published')`;
 
-  let firstReviewId = 0;
-  for (const [slug, userId, rating, title, body] of reviewSeeds) {
-    const id = await insert(
-      "INSERT INTO reviews (spa_id, user_id, rating, title, body, visited_on) VALUES (?,?,?,?,?,CURDATE())",
-      [spaIds.get(slug), userId, rating, title, body]
-    );
-    if (!firstReviewId) firstReviewId = id;
-  }
+  const firstReviewId = await insert(reviewInsert, [
+    spaIds.get("ganga-veda-rishikesh"), travelerAId, 5.0,
+    5.0, 5.0, 4.5, 4.5, 4.0, 5.0, 5.0, 3.5, 4.5, 4.5,
+    1, "Life-changing panchakarma",
+    "The doctors took time to explain every step. The riverside setting makes the daily treatments unforgettable.",
+    "2026-01-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("ganga-veda-rishikesh"), travelerAId, 2.5,
+    3.0, 3.5, 2.5, null, 2.0, 3.0, 4.0, null, 3.0, 2.5,
+    0, "Return visit felt average",
+    "Came back for a shorter stay. Treatments were fine but the rooms and value did not match the first visit. Food was not applicable this time as I ate in town.",
+    "2026-06-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("ganga-veda-rishikesh"), travelerBId, 4.0,
+    4.0, 4.5, 4.0, 3.5, 3.5, 4.0, 4.5, 3.0, 4.0, 4.0,
+    1, "Wonderful, book early",
+    "Excellent therapists and food. Rooms are simple. Book the retreat months ahead — it fills up quickly every season.",
+    "2025-11-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("kerala-roots-kochi"), travelerBId, 5.0,
+    5.0, 5.0, 4.5, 5.0, 4.5, 5.0, 4.0, 4.0, 4.5, 5.0,
+    1, "The real deal",
+    "This is a proper Ayurvedic hospital, not a tourist spa. Strict but incredibly effective 14-night program with attentive doctors.",
+    "2025-12-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("palm-shala-goa"), travelerAId, 3.5,
+    4.0, 3.5, 4.0, 3.5, null, 4.0, 4.5, 3.0, 3.5, 4.0,
+    1, "Great value abhyanga",
+    "Lovely open-air shala and skilled therapists. Sunset yoga after shirodhara is perfect. We did not stay overnight so rooms are not applicable.",
+    "2026-02-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("ubud-prana-retreat"), travelerAId, 4.5,
+    4.5, 4.0, 4.5, 5.0, 4.5, 4.5, 5.0, 4.0, 4.0, 4.0,
+    1, "Jungle magic",
+    "The blend of Balinese and Ayurvedic techniques works beautifully. The herbal meals alone are worth the journey into Ubud.",
+    "2026-03-01",
+  ]);
+  await insert(reviewInsert, [
+    spaIds.get("red-rock-veda-sedona"), travelerBId, 1.5,
+    2.0, 2.5, 2.0, null, 1.5, 2.5, 4.0, 1.0, 2.0, 1.0,
+    0, "Overpriced for what we received",
+    "Best scenery in the US, but the treatments felt rushed and arrival transfers never showed. Would not recommend at this price.",
+    "2026-04-01",
+  ]);
 
   await execute(
     "INSERT INTO review_responses (review_id, user_id, body) VALUES (?,?,?)",
-    [firstReviewId, vendorUser1, "Thank you Asha! We are delighted the program helped. Our doctors send their regards \u2014 see you next season."]
+    [firstReviewId, vendorUser1, "Thank you Asha! We are delighted the program helped. Our doctors send their regards — see you next season."]
   );
 
   const q1 = await insert(

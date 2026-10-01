@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import multipart from "@fastify/multipart";
+import { mkdir } from "node:fs/promises";
 import { config } from "./config.js";
 import { staticCache } from "./cache/staticCache.js";
 import { optionalAuth } from "./plugins/auth.js";
@@ -19,6 +21,10 @@ async function main() {
   const app = Fastify({ logger: true });
 
   await app.register(cors, { origin: [config.webOrigin], credentials: true });
+  await app.register(multipart, {
+    limits: { files: 5, fileSize: 5 * 1024 * 1024, fieldSize: 64 * 1024 },
+  });
+  await mkdir(config.reviewUploadDir, { recursive: true });
 
   // Load static lookup tables into memory before accepting traffic.
   await staticCache.reload();

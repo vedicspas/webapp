@@ -124,8 +124,10 @@ key. Schema source of truth: `apps/api/src/db/schema.sql`.
 | `retreat_slots` | departure dates for retreats: `start_date` + `capacity`; remaining places computed from bookings |
 | `bookings` | public `code`, guest/spa/treatment FKs, `status_id`, **snapshot** of `payment_mode_id` at booking time, `starts_at`/`ends_at` (UTC), `party_size`, `total_minor`, `paid_minor`, `platform_fee_minor`, `stripe_payment_intent_id` |
 | `payment_events` | webhook audit log; unique `stripe_event_id` makes webhook processing idempotent |
-| `reviews` | rating 1–5 (CHECK constraint), title, body, optional `visited_on`, optional `booking_id` link |
+| `reviews` | overall `rating` DECIMAL(2,1) in 0.5 steps, ten nullable category scores, `recommends`, `status` (`published`/`hidden`), optional `visited_on` |
 | `review_responses` | one vendor response per review (UNIQUE `review_id`) |
+| `review_photos` | compressed WebP files served from `/uploads/reviews` |
+| `review_moderation_events` | admin hide/restore audit (reason is internal) |
 | `questions` / `answers` | Q&A; answers carry `is_vendor` so owner replies get badged |
 | `wishlist_items` | composite PK (`user_id`,`spa_id`) |
 

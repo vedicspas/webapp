@@ -30,7 +30,7 @@ export async function userRoutes(app: FastifyInstance): Promise<void> {
     }>(
       `SELECT rv.id, rv.rating, rv.title, rv.body, rv.created_at, s.name AS spa_name, s.slug AS spa_slug
        FROM reviews rv JOIN spas s ON s.id = rv.spa_id
-       WHERE rv.user_id = ? ORDER BY rv.created_at DESC LIMIT 50`,
+       WHERE rv.user_id = ? AND rv.status = 'published' ORDER BY rv.created_at DESC LIMIT 50`,
       [user.id]
     );
 

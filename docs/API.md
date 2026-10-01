@@ -64,9 +64,9 @@ webhook (raw body).
 
 | Method & path | Access | Description |
 | --- | --- | --- |
-| `GET /spas/:slug/reviews` | Public | Reviews (newest first) incl. author `{ name, username, avatarUrl }` and any vendor `response`. |
-| `POST /spas/:slug/reviews` | Auth | Body `{ rating: 1–5, title, body, visitedOn? (YYYY-MM-DD) }`. One review per user per spa (`409` on duplicate). |
-| `POST /reviews/:id/response` | Vendor | Body `{ body }`. Only the spa's owner; one response per review (`409` on duplicate). |
+| `GET /spas/:slug/reviews` | Public | Published reviews only (newest first), paginated, plus `summary` (overall average, distribution, recommend %, category averages). |
+| `POST /spas/:slug/reviews` | Auth | Multipart or JSON. Overall rating 1.0–5.0 in 0.5 steps, title 5–120, body 30–5000, `recommends`, `confirmedGenuine: true`, optional visit month/year, category ratings or `null` (N/A), up to 5 photos. Max 3 reviews per user per spa (`409`). Published immediately. |
+| `POST /reviews/:id/response` | Vendor | Body `{ body }`. Only the spa's owner; one response per review. |
 | `GET /spas/:slug/questions` | Public | Questions with nested answers; owner answers flagged `isVendor`. |
 | `POST /spas/:slug/questions` | Auth | Body `{ body }`. |
 | `POST /questions/:id/answers` | Auth | Body `{ body }`. Anyone may answer; the spa owner's answers are badged. |
@@ -153,8 +153,9 @@ Ownership is enforced in SQL — a vendor can never read or mutate another vendo
 | `PATCH /admin/vendors/:id/status` | Body `{ status: "pending"\|"approved"\|"suspended" }`. Non-approved statuses immediately unpublish all the vendor's spas. |
 | `GET /admin/spas` | Every listing with vendor + publish state. |
 | `PATCH /admin/spas/:id` | Body `{ isPublished: boolean }`. Publishing is refused (`409`) if the vendor isn't approved. |
-| `GET /admin/reviews` | Latest 100 reviews with author emails. |
-| `DELETE /admin/reviews/:id` | Remove a review (cascades its response). |
+| `GET /admin/reviews` | Latest 100 reviews with author emails and status (includes hidden). |
+| `PATCH /admin/reviews/:id` | Body `{ status: "published"\|"hidden", reason? }`. Hide/restore. Reason is internal-only. |
+| `DELETE /admin/reviews/:id` | Permanently remove a review (cascades response and photos). |
 | `GET /admin/bookings` | Latest 100 bookings platform-wide with fee breakdown. |
 
 ## Stripe webhook

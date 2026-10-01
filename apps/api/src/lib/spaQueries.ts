@@ -30,7 +30,7 @@ export const SPA_SUMMARY_SELECT = `
   FROM spas s
   LEFT JOIN (
     SELECT spa_id, ROUND(AVG(rating), 1) AS avg_rating, COUNT(*) AS cnt
-    FROM reviews GROUP BY spa_id
+    FROM reviews WHERE status = 'published' GROUP BY spa_id
   ) r ON r.spa_id = s.id
   LEFT JOIN (
     SELECT spa_id, MIN(price_minor) AS min_price

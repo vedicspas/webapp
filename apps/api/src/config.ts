@@ -64,4 +64,5 @@ export const config = {
     platformFeeBps: Number(process.env.PLATFORM_FEE_BPS ?? "750"),
     defaultBookingFeeMinor: Number(process.env.DEFAULT_BOOKING_FEE_MINOR ?? "500"),
   },
+  reviewUploadDir: process.env.REVIEW_UPLOAD_DIR ?? join(here, "../../../uploads/reviews"),
 };

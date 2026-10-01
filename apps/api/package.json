@@ -5,19 +5,24 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && cp src/db/schema.sql dist/db/schema.sql",
+    "build": "tsc && cp src/db/schema.sql dist/db/schema.sql && mkdir -p dist/db/migrations && cp src/db/migrations/*.sql dist/db/migrations/",
     "start": "node dist/index.js",
+    "test": "tsx --test src/lib/reviews.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
-    "db:seed": "tsx src/db/seed.ts"
+    "db:migrate:reviews": "tsx src/db/migrateReviews.ts",
+    "db:seed": "tsx src/db/seed.ts",
+    "db:seed:reviews": "tsx src/db/seedReviews.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/multipart": "^10.1.2",
     "@vedic/shared": "*",
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "fastify": "^5.11.2",
     "jose": "^6.2.8",
     "mysql2": "^3.23.2",
+    "sharp": "^0.35.5",
     "stripe": "^22.4.0",
     "zod": "^4.4.3"
   },

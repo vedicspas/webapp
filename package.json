@@ -11,6 +11,9 @@
     "dev:web": "npm run dev --workspace=apps/web",
     "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/api && npm run build --workspace=apps/web",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
-    "db:seed": "npm run db:seed --workspace=apps/api"
+    "db:migrate:reviews": "npm run db:migrate:reviews --workspace=apps/api",
+    "db:seed": "npm run db:seed --workspace=apps/api",
+    "db:seed:reviews": "npm run db:seed:reviews --workspace=apps/api",
+    "test": "npm run test --workspace=apps/api"
   }
 }

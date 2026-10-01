@@ -6,7 +6,7 @@ import { requireAuth } from "../plugins/auth.js";
 import { stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
 import { toBooking } from "./bookings.js";
-import { toReview } from "./reviews.js";
+import { toReview, photosByReview } from "./reviews.js";
 
 interface VendorRow {
   id: number;
@@ -460,7 +460,10 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const vendor = await requireVendor(request, reply);
     if (!vendor) return;
     const rows = await query<Parameters<typeof toReview>[0] & { spa_name: string }>(
-      `SELECT rv.id, rv.spa_id, rv.rating, rv.title, rv.body, rv.visited_on, rv.created_at,
+      `SELECT rv.id, rv.spa_id, rv.rating,
+         rv.rating_treatments, rv.rating_practitioners, rv.rating_staff, rv.rating_food, rv.rating_accommodations,
+         rv.rating_cleanliness, rv.rating_location, rv.rating_transport, rv.rating_communication, rv.rating_value,
+         rv.recommends, rv.title, rv.body, rv.visited_on, rv.created_at,
          u.id AS user_id, u.username, u.name AS user_name, u.avatar_url, u.bio AS user_bio,
          u.created_at AS user_created_at,
          rr.id AS response_id, rr.body AS response_body, rr.created_at AS response_created_at,
@@ -470,9 +473,10 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
        JOIN users u ON u.id = rv.user_id
        LEFT JOIN review_responses rr ON rr.review_id = rv.id
        LEFT JOIN users ru ON ru.id = rr.user_id
-       WHERE s.vendor_id = ? ORDER BY rv.created_at DESC LIMIT 100`,
+       WHERE s.vendor_id = ? AND rv.status = 'published' ORDER BY rv.created_at DESC LIMIT 100`,
       [vendor.id]
     );
-    return rows.map((r) => ({ ...toReview(r), spaName: r.spa_name }));
+    const photos = await photosByReview(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...toReview(r, photos.get(r.id) ?? []), spaName: r.spa_name }));
   });
 }

@@ -3,7 +3,7 @@ import type {
   CreateBookingResponse,
   Paginated,
   Question,
-  Review,
+  ReviewListResponse,
   SpaDetail,
   SpaSummary,
   StaticMeta,
@@ -90,7 +90,7 @@ export const getSpa = (slug: string) => api<SpaDetail>(`/spas/${slug}`, { revali
 export const searchSpas = (qs: string) =>
   api<Paginated<SpaSummary & { distanceKm?: number }>>(`/spas?${qs}`, { revalidate: 60 });
 export const getReviews = (slug: string, page = 1) =>
-  api<Paginated<Review>>(`/spas/${slug}/reviews?page=${page}`, { revalidate: 60 });
+  api<ReviewListResponse>(`/spas/${slug}/reviews?page=${page}`, { revalidate: 60 });
 export const getQuestions = (slug: string) =>
   api<Question[]>(`/spas/${slug}/questions`, { revalidate: 60 });
 
