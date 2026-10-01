@@ -18,6 +18,7 @@ import {
 } from "@vedic/shared";
 import { shortDate } from "@/lib/format";
 import { RatingControl, RatingDisplay, RatingStars } from "@/components/RatingStars";
+import { toast } from "@/stores/toastStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -142,9 +143,12 @@ function ReviewForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not submit review");
+      toast("Review posted.");
       onCreated(data as Review);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not submit review");
+      const message = err instanceof Error ? err.message : "Could not submit review";
+      setError(message);
+      toast(message, "error");
     } finally {
       setSubmitting(false);
     }

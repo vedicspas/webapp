@@ -11,7 +11,9 @@ import type {
   Treatment,
 } from "@vedic/shared";
 import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay } from "@/lib/format";
+import { toast } from "@/stores/toastStore";
 import { PaymentForm } from "./PaymentForm";
+import { TreatmentCaption } from "@/components/TreatmentCaption";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -24,17 +26,37 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const [treatmentId, setTreatmentId] = useState<number | null>(
     spa.treatments[0]?.id ?? null
   );
+  const [treatments, setTreatments] = useState<Treatment[]>(spa.treatments);
   const [date, setDate] = useState("");
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
   const [retreatSlots, setRetreatSlots] = useState<RetreatSlot[]>([]);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
   const [partySize, setPartySize] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [step, setStep] = useState<Step>("pick");
   const [result, setResult] = useState<CreateBookingResponse | null>(null);
 
-  const treatment: Treatment | undefined = spa.treatments.find((t) => t.id === treatmentId);
+  const treatment: Treatment | undefined = treatments.find((t) => t.id === treatmentId);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/spas/${spa.slug}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((data: SpaDetail) => {
+        if (cancelled || !Array.isArray(data.treatments)) return;
+        setTreatments(data.treatments);
+        setTreatmentId((current) => {
+          if (current && data.treatments.some((t) => t.id === current)) return current;
+          return data.treatments[0]?.id ?? null;
+        });
+      })
+      .catch(() => {
+        /* keep the server-rendered list if the live fetch fails */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [spa.slug]);
 
   // Load availability whenever treatment/date changes. Selection resets are
   // handled in the select/date change handlers.
@@ -76,7 +98,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
     }
     if (!treatment || !selectedStart) return;
     setLoading(true);
-    setError(null);
     try {
       const res = await fetch(`${API_URL}/bookings`, {
         method: "POST",
@@ -94,8 +115,9 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       if (!res.ok) throw new Error(data.error ?? "Booking failed");
       setResult(data as CreateBookingResponse);
       setStep(data.stripeClientSecret ? "pay" : "done");
+      toast(data.stripeClientSecret ? "Booking saved. Complete payment to confirm." : "Booking saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Booking failed");
+      toast(err instanceof Error ? err.message : "Booking failed", "error");
     } finally {
       setLoading(false);
     }
@@ -107,7 +129,8 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         <p className="text-3xl">&#127881;</p>
         <h3 className="mt-1 text-lg font-semibold text-veda-900">Booking confirmed</h3>
         <p className="mt-2 text-sm text-foreground/75">
-          {result.booking.treatmentName} at {result.booking.spaName} on{" "}
+          <TreatmentCaption name={result.booking.treatmentName} categoryName={result.booking.treatmentCategoryName} />
+          {" "}at {result.booking.spaName} on{" "}
           <strong>{shortDate(result.booking.startsAt)}</strong>
           {result.booking.treatmentKind === "session" ? (
             <> at {timeOfDay(result.booking.startsAt)}</>
@@ -115,7 +138,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           .
         </p>
         <p className="mt-2 rounded-lg bg-veda-50 px-3 py-2 text-sm">
-          Confirmation code: <strong>{result.booking.code}</strong>
+          Booking ref number: <strong>{result.booking.code}</strong>
         </p>
         <button
           onClick={() => router.push("/account/bookings")}
@@ -137,7 +160,10 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         </p>
         <PaymentForm
           clientSecret={result.stripeClientSecret}
-          onSuccess={() => setStep("done")}
+          onSuccess={() => {
+            toast("Payment saved.");
+            setStep("done");
+          }}
         />
       </div>
     );
@@ -148,6 +174,11 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       <h3 className="text-lg font-semibold text-veda-900">Book a treatment</h3>
       <p className="mt-0.5 text-xs text-veda-600">{PAYMENT_MODE_LABELS[spa.paymentModeCode]}</p>
 
+      {treatments.length === 0 ? (
+        <p className="mt-4 rounded-lg bg-veda-50 px-3 py-2 text-sm text-foreground/70">
+          No treatments are currently offered for booking.
+        </p>
+      ) : (
       <label className="mt-4 block text-sm font-medium">
         Treatment
         <select
@@ -155,19 +186,25 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           onChange={(e) => {
             setTreatmentId(Number(e.target.value));
             setSelectedStart(null);
-            setError(null);
+            setDate("");
           }}
           className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
         >
-          {spa.treatments.map((t) => (
+          {treatments.map((t) => (
             <option key={t.id} value={t.id}>
-              {t.name} &mdash; {money(t.priceMinor, spa.currencyCode)}
-              {t.kind === "retreat" ? " / person" : ""}
+              {t.name}
+              {t.categoryName ? ` - ${t.categoryName}` : ""}
+              {" — "}
+              {money(t.priceMinor, spa.currencyCode)}
+              {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : ""}
             </option>
           ))}
         </select>
       </label>
+      )}
 
+      {treatments.length === 0 ? null : (
+      <>
       {treatment?.kind === "session" ? (
         <>
           <label className="mt-3 block text-sm font-medium">
@@ -179,7 +216,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
               onChange={(e) => {
                 setDate(e.target.value);
                 setSelectedStart(null);
-                setError(null);
               }}
               className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
             />
@@ -211,35 +247,32 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         </>
       ) : treatment ? (
         <div className="mt-3">
-          <p className="text-sm font-medium">
-            Departures ({treatment.nights} nights)
-          </p>
-          {retreatSlots.length === 0 ? (
-            <p className="mt-1 text-sm text-foreground/60">No departures scheduled yet.</p>
-          ) : (
-            <div className="mt-1 space-y-1.5">
+          <label className="block text-sm font-medium">
+            Start date
+            <select
+              value={selectedStart ?? ""}
+              onChange={(e) => setSelectedStart(e.target.value || null)}
+              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
+            >
+              <option value="">Choose a start date</option>
               {retreatSlots.map((slot) => {
                 const left = slot.capacity - slot.bookedCount;
                 return (
-                  <button
-                    key={slot.id}
-                    disabled={left <= 0}
-                    onClick={() => setSelectedStart(slot.startDate)}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-sm ${
-                      selectedStart === slot.startDate
-                        ? "bg-veda-700 text-white"
-                        : "border border-veda-200 hover:bg-veda-50 disabled:opacity-40"
-                    }`}
-                  >
-                    <span>{shortDate(slot.startDate)}</span>
-                    <span className={selectedStart === slot.startDate ? "text-veda-100" : "text-veda-600"}>
-                      {left > 0 ? `${left} places left` : "Sold out"}
-                    </span>
-                  </button>
+                  <option key={slot.id} value={slot.startDate} disabled={left <= 0}>
+                    {shortDate(slot.startDate)}
+                    {left > 0 ? ` · ${left} spot${left === 1 ? "" : "s"} available` : " · full"}
+                  </option>
                 );
               })}
-            </div>
-          )}
+            </select>
+          </label>
+          <p className="mt-1.5 text-xs text-foreground/55">
+            This is a {treatment.nights}-night stay at the clinic. Pick a start date the clinic has
+            opened for this program.
+          </p>
+          {retreatSlots.length === 0 ? (
+            <p className="mt-1 text-sm text-foreground/60">No start dates are listed yet.</p>
+          ) : null}
         </div>
       ) : null}
 
@@ -276,8 +309,6 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         </div>
       ) : null}
 
-      {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
-
       <button
         disabled={!treatment || !selectedStart || loading}
         onClick={book}
@@ -285,6 +316,8 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       >
         {loading ? "Booking\u2026" : session ? "Reserve" : "Sign in to book"}
       </button>
+      </>
+      )}
       <p className="mt-2 text-center text-xs text-foreground/50">
         Payments are processed securely by Stripe. Card details never touch our servers.
       </p>

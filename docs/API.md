@@ -137,7 +137,8 @@ Amount charged now, by the spa's payment mode: `full_prepay` → total; `deposit
 | `DELETE /vendor/photos/:photoId` | Remove photo. |
 | `POST /vendor/spas/:id/treatments` | Create treatment: `{ name, description, categoryId, kind: "session"\|"retreat", durationMinutes?, nights?, priceMinor, isActive }`. |
 | `PUT /vendor/treatments/:id` | Update / deactivate a treatment. |
-| `POST /vendor/treatments/:id/retreat-slots` | Add departure `{ startDate, capacity }` (retreats only). |
+| `POST /vendor/treatments/:id/retreat-slots` | Add or update a departure `{ startDate, capacity }` (retreats only). → `{ id, startDate, capacity }`. |
+| `DELETE /vendor/treatments/:id/retreat-slots/:slotId` | Remove a departure. `409` if guests have already booked that date. |
 | `GET /vendor/bookings` | All bookings across the vendor's spas with guest contact info and amounts. |
 | `PATCH /vendor/bookings/:id/status` | Body `{ status: "confirmed"\|"cancelled"\|"completed"\|"no_show" }`. |
 | `GET /vendor/reviews` | All reviews of the vendor's spas (with any existing responses). |

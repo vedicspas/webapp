@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { toast } from "@/stores/toastStore";
 
 const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 const stripePromise = publishableKey ? loadStripe(publishableKey) : null;
@@ -11,15 +12,13 @@ function InnerForm({ onSuccess }: { onSuccess: () => void }) {
   const stripe = useStripe();
   const elements = useElements();
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   async function pay() {
     if (!stripe || !elements) return;
     setSubmitting(true);
-    setError(null);
     const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
     if (result.error) {
-      setError(result.error.message ?? "Payment failed");
+      toast(result.error.message ?? "Payment failed", "error");
       setSubmitting(false);
     } else {
       onSuccess();
@@ -29,7 +28,6 @@ function InnerForm({ onSuccess }: { onSuccess: () => void }) {
   return (
     <div>
       <PaymentElement />
-      {error ? <p className="mt-2 text-sm text-red-600">{error}</p> : null}
       <button
         onClick={pay}
         disabled={submitting || !stripe}

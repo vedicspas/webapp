@@ -23,7 +23,7 @@ export function Footer() {
           <p className="mb-2 font-semibold text-white">For spa owners</p>
           <ul className="space-y-1">
             <li><Link href="/vendor" className="hover:text-white">Vendor dashboard</Link></li>
-            <li><Link href="/vendor/register" className="hover:text-white">List your spa</Link></li>
+            <li><Link href="/list-spa" className="hover:text-white">List your spa</Link></li>
           </ul>
         </div>
       </div>

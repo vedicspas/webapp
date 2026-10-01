@@ -4,6 +4,7 @@ import type {
   City,
   Country,
   Currency,
+  NamedLookup,
   PaymentMode,
   Role,
   StaticMeta,
@@ -25,44 +26,78 @@ class StaticCache {
   bookingStatuses: BookingStatus[] = [];
   currencies: Currency[] = [];
   roles: Role[] = [];
+  languages: NamedLookup[] = [];
+  dietaryOptions: NamedLookup[] = [];
+  accommodationTypes: NamedLookup[] = [];
 
   private byId = {
     cities: new Map<number, City>(),
     currencies: new Map<number, Currency>(),
     paymentModes: new Map<number, PaymentMode>(),
     bookingStatuses: new Map<number, BookingStatus>(),
+    treatmentCategories: new Map<number, TreatmentCategory>(),
   };
 
   async reload(): Promise<void> {
-    const [countries, cities, amenities, categories, modes, statuses, currencies, roles] =
-      await Promise.all([
-        query<Country>("SELECT id, iso2, name FROM countries ORDER BY name"),
-        query<City>(
-          "SELECT id, country_id AS countryId, name, lat, lng FROM cities ORDER BY name"
-        ),
-        query<Amenity>("SELECT id, name, icon FROM amenities ORDER BY name"),
-        query<TreatmentCategory>(
-          "SELECT id, slug, name FROM treatment_categories ORDER BY name"
-        ),
-        query<PaymentMode>("SELECT id, code, name, description FROM payment_modes"),
-        query<BookingStatus>("SELECT id, code, name FROM booking_statuses"),
-        query<Currency>("SELECT id, code, symbol FROM currencies"),
-        query<Role>("SELECT id, code FROM roles"),
-      ]);
+    const [
+      countries,
+      cities,
+      amenities,
+      categories,
+      modes,
+      statuses,
+      currencies,
+      roles,
+      languages,
+      dietaryOptions,
+      accommodationTypes,
+    ] = await Promise.all([
+      query<Country>("SELECT id, iso2, name FROM countries ORDER BY name"),
+      query<City>(
+        "SELECT id, country_id AS countryId, name, lat, lng FROM cities ORDER BY name"
+      ),
+      query<Amenity>("SELECT id, name, icon FROM amenities ORDER BY name"),
+      query<TreatmentCategory>(
+        "SELECT id, slug, name FROM treatment_categories ORDER BY name"
+      ),
+      query<PaymentMode>("SELECT id, code, name, description FROM payment_modes"),
+      query<BookingStatus>("SELECT id, code, name FROM booking_statuses"),
+      query<Currency>("SELECT id, code, symbol FROM currencies"),
+      query<Role>("SELECT id, code FROM roles"),
+      query<NamedLookup>("SELECT id, name FROM languages ORDER BY name").catch(() => []),
+      query<NamedLookup>("SELECT id, name FROM dietary_options ORDER BY name").catch(() => []),
+      query<NamedLookup>("SELECT id, name FROM accommodation_types ORDER BY name").catch(() => []),
+    ]);
 
     this.countries = countries;
     this.cities = cities;
     this.amenities = amenities;
-    this.treatmentCategories = categories;
+    this.treatmentCategories = [...categories].sort((a, b) => {
+      if (a.slug === "other") return 1;
+      if (b.slug === "other") return -1;
+      return a.name.localeCompare(b.name);
+    });
     this.paymentModes = modes;
     this.bookingStatuses = statuses;
     this.currencies = currencies;
     this.roles = roles;
+    this.languages = languages;
+    this.dietaryOptions = dietaryOptions;
+    this.accommodationTypes = accommodationTypes;
 
     this.byId.cities = new Map(cities.map((c) => [c.id, c]));
     this.byId.currencies = new Map(currencies.map((c) => [c.id, c]));
     this.byId.paymentModes = new Map(modes.map((m) => [m.id, m]));
     this.byId.bookingStatuses = new Map(statuses.map((s) => [s.id, s]));
+    this.byId.treatmentCategories = new Map(this.treatmentCategories.map((c) => [c.id, c]));
+  }
+
+  treatmentCategory(id: number): TreatmentCategory | undefined {
+    return this.byId.treatmentCategories.get(id);
+  }
+
+  treatmentCategoryName(id: number): string {
+    return this.treatmentCategory(id)?.name ?? "Other";
   }
 
   city(id: number): City | undefined {
@@ -126,6 +161,9 @@ class StaticCache {
       bookingStatuses: this.bookingStatuses,
       currencies: this.currencies,
       roles: this.roles,
+      languages: this.languages,
+      dietaryOptions: this.dietaryOptions,
+      accommodationTypes: this.accommodationTypes,
     };
   }
 }

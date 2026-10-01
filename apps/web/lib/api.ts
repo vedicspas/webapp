@@ -41,8 +41,9 @@ export async function api<T>(path: string, options: FetchOptions = {}): Promise<
       ...(options.token ? { authorization: `Bearer ${options.token}` } : {}),
     },
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
-    // Prerender-friendly caching for public GETs; no-store when authenticated.
-    ...(options.token || options.method
+    // Prerender-friendly caching for public GETs; no-store when authenticated
+    // or when the caller opts out (spa detail must not serve stale treatments).
+    ...(options.token || options.method || options.revalidate === false
       ? { cache: "no-store" as const }
       : { next: { revalidate: options.revalidate ?? 300 } }),
   });
@@ -70,6 +71,9 @@ export const EMPTY_META: StaticMeta = {
   bookingStatuses: [],
   currencies: [],
   roles: [],
+  languages: [],
+  dietaryOptions: [],
+  accommodationTypes: [],
 };
 
 export const getMeta = () => api<StaticMeta>("/meta", { revalidate: 3600 });
@@ -86,7 +90,7 @@ export async function getMetaSafe(): Promise<StaticMeta> {
   }
 }
 export const getSpaSlugs = () => api<string[]>("/spas/slugs", { revalidate: 300 });
-export const getSpa = (slug: string) => api<SpaDetail>(`/spas/${slug}`, { revalidate: 300 });
+export const getSpa = (slug: string) => api<SpaDetail>(`/spas/${slug}`, { revalidate: false });
 export const searchSpas = (qs: string) =>
   api<Paginated<SpaSummary & { distanceKm?: number }>>(`/spas?${qs}`, { revalidate: 60 });
 export const getReviews = (slug: string, page = 1) =>

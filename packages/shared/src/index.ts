@@ -25,6 +25,13 @@ export interface Amenity {
   icon: string;
 }
 
+export interface NamedLookup {
+  id: number;
+  name: string;
+}
+
+export type OnRequestFlag = "on_request" | "not_available";
+
 export interface TreatmentCategory {
   id: number;
   slug: string;
@@ -59,6 +66,7 @@ export interface Currency {
   symbol: string;
 }
 
+/** Stored as `traveler` in the database; shown as “Visitor” in the product. */
 export type RoleCode = "traveler" | "vendor" | "admin";
 
 export type VendorStatus = "pending" | "approved" | "suspended";
@@ -77,6 +85,9 @@ export interface StaticMeta {
   bookingStatuses: BookingStatus[];
   currencies: Currency[];
   roles: Role[];
+  languages: NamedLookup[];
+  dietaryOptions: NamedLookup[];
+  accommodationTypes: NamedLookup[];
 }
 
 // ---------- Core entities ----------
@@ -96,6 +107,7 @@ export interface Treatment {
   id: number;
   spaId: number;
   categoryId: number;
+  categoryName: string;
   kind: TreatmentKind;
   name: string;
   description: string;
@@ -108,6 +120,8 @@ export interface Treatment {
 export interface SpaPhoto {
   id: number;
   url: string;
+  /** Short caption shown on the listing gallery. Stored as text, not a file blob. */
+  title: string;
   alt: string;
   sortOrder: number;
 }
@@ -144,6 +158,12 @@ export interface SpaDetail extends SpaSummary {
   photos: SpaPhoto[];
   treatments: Treatment[];
   openHours: OpenHours[];
+  languages: NamedLookup[];
+  dietaryOptions: NamedLookup[];
+  airportPickup: OnRequestFlag | null;
+  accommodationType: NamedLookup | null;
+  accessibility: string | null;
+  familyAccommodation: OnRequestFlag | null;
 }
 
 export interface OpenHours {
@@ -235,6 +255,7 @@ export interface Booking {
   spaSlug: string;
   treatmentId: number;
   treatmentName: string;
+  treatmentCategoryName: string;
   treatmentKind: TreatmentKind;
   statusCode: BookingStatusCode;
   paymentModeCode: PaymentModeCode;

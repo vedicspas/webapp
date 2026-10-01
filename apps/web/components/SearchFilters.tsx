@@ -94,7 +94,7 @@ export function SearchFilters() {
           </label>
 
           <label className="text-sm">
-            <span className="mb-1 block font-medium">Treatment type</span>
+            <span className="mb-1 block font-medium">Treatment category</span>
             <select
               value={store.categoryId ?? ""}
               onChange={(e) =>

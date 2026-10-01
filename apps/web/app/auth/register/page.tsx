@@ -1,47 +1,96 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { signIn } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { PageBusy } from "@/components/PageBusy";
+import { setSignupIntent, signupRoleFromSearch, type SignupRole } from "@/lib/signupIntent";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
+const ROLES: { id: SignupRole; title: string; description: string }[] = [
+  {
+    id: "vendor",
+    title: "Vendor / Clinic",
+    description: "List your spa / clinic",
+  },
+  {
+    id: "visitor",
+    title: "Visitor",
+    description: "Review spas, save favorites and book treatments.",
+  },
+];
 
-export default function RegisterPage() {
-  const router = useRouter();
+function RegisterForm() {
+  const params = useSearchParams();
+  const [role, setRole] = useState<SignupRole>(() => signupRoleFromSearch(params.get("intent")));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  useEffect(() => {
+    setSignupIntent(role);
+  }, [role]);
+
+  const signInHref =
+    role === "vendor" ? "/auth/signin?intent=vendor&callbackUrl=/list-spa" : "/auth/signin";
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${API_URL}/auth/register`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100"}/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+          intent: role,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Registration failed");
-      await signIn("credentials", { email, password, redirect: false });
-      router.push("/");
-      router.refresh();
+      const signedIn = await signIn("credentials", { email, password, redirect: false });
+      if (signedIn?.error) throw new Error("Account created, but sign-in failed. Please sign in.");
+      window.location.assign("/auth/welcome");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
       setBusy(false);
     }
   }
 
+  if (busy) {
+    return <PageBusy label="Creating your account…" />;
+  }
+
   return (
-    <div className="mx-auto max-w-sm px-4 py-12">
+    <div className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-2xl font-bold text-veda-900">Create your account</h1>
-      <p className="mt-1 text-sm text-foreground/60">
-        Review spas, save favorites and book treatments.
-      </p>
+      <p className="mt-1 text-sm text-foreground/60">Choose how you will use VedaFinder.</p>
+
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        {ROLES.map((item) => {
+          const selected = role === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setRole(item.id)}
+              className={`rounded-2xl border px-4 py-5 text-left transition ${
+                selected
+                  ? "border-veda-700 bg-veda-50 ring-2 ring-veda-200"
+                  : "border-veda-200 bg-white hover:border-veda-400"
+              }`}
+            >
+              <span className="block text-lg font-bold text-veda-900">{item.title}</span>
+              <span className="mt-1 block text-sm font-normal text-foreground/70">{item.description}</span>
+            </button>
+          );
+        })}
+      </div>
 
       <form onSubmit={submit} className="mt-6 space-y-3">
         <input
@@ -74,16 +123,36 @@ export default function RegisterPage() {
           disabled={busy}
           className="w-full rounded-full bg-veda-700 py-2.5 font-medium text-white hover:bg-veda-600 disabled:opacity-50"
         >
-          {busy ? "Creating account\u2026" : "Create account"}
+          Create account
         </button>
       </form>
 
+      <button
+        type="button"
+        onClick={() => {
+          setSignupIntent(role);
+          const next = role === "vendor" ? "/list-spa" : "/";
+          void signIn("google", { callbackUrl: `/auth/continue?next=${encodeURIComponent(next)}` });
+        }}
+        className="mt-3 w-full rounded-full border border-veda-300 py-2.5 text-sm font-medium text-veda-900 hover:bg-veda-50"
+      >
+        Continue with Google
+      </button>
+
       <p className="mt-6 text-center text-sm text-foreground/60">
         Already have an account?{" "}
-        <Link href="/auth/signin" className="text-veda-600 hover:underline">
+        <Link href={signInHref} className="text-veda-600 hover:underline">
           Sign in
         </Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<PageBusy label="Loading…" />}>
+      <RegisterForm />
+    </Suspense>
   );
 }

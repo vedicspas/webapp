@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useApi } from "@/lib/useApi";
+import { toast } from "@/stores/toastStore";
 
 interface VendorMe {
   id: number;
@@ -14,9 +15,12 @@ interface VendorMe {
     id: number;
     slug: string;
     name: string;
+    clinicCode: string;
     cityName: string;
     paymentModeCode: string;
     isPublished: boolean;
+    bookingsToday: number;
+    bookingsThisWeek: number;
   }[];
 }
 
@@ -51,7 +55,7 @@ export default function VendorDashboardPage() {
       const { url } = await call<{ url: string }>("/vendor/stripe/onboard", { method: "POST" });
       window.location.href = url;
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Stripe onboarding unavailable");
+      toast(err instanceof Error ? err.message : "Stripe onboarding unavailable", "error");
       setBusy(false);
     }
   }
@@ -75,10 +79,10 @@ export default function VendorDashboardPage() {
           Create a free vendor account to publish your center, take bookings and reply to reviews.
         </p>
         <Link
-          href="/vendor/register"
+          href="/list-spa"
           className="mt-6 inline-block rounded-full bg-turmeric-400 px-6 py-2.5 font-semibold text-veda-900 hover:bg-turmeric-300"
         >
-          Become a vendor
+          List your spa
         </Link>
       </div>
     );
@@ -106,13 +110,10 @@ export default function VendorDashboardPage() {
 
       <div className="mt-4 flex flex-wrap gap-3 text-sm">
         <Link href="/vendor/bookings" className="rounded-full border border-veda-300 px-4 py-1.5 hover:bg-veda-50">
-          Bookings
+          All bookings
         </Link>
         <Link href="/vendor/reviews" className="rounded-full border border-veda-300 px-4 py-1.5 hover:bg-veda-50">
           Reviews
-        </Link>
-        <Link href="/vendor/spas/new" className="rounded-full border border-veda-300 px-4 py-1.5 hover:bg-veda-50">
-          Add a spa
         </Link>
       </div>
 
@@ -141,39 +142,58 @@ export default function VendorDashboardPage() {
       </section>
 
       <section className="mt-6">
-        <h2 className="mb-3 font-semibold text-veda-900">Your spas</h2>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="font-semibold text-veda-900">Your clinics</h2>
+          <Link
+            href="/vendor/spas/new"
+            className="rounded-full bg-turmeric-400 px-4 py-1.5 text-sm font-semibold text-veda-900 hover:bg-turmeric-300"
+          >
+            Add a clinic
+          </Link>
+        </div>
         <div className="space-y-3">
           {me.spas.map((spa) => (
-            <div
-              key={spa.id}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-veda-100 bg-white p-4"
-            >
-              <div>
-                <p className="font-medium text-veda-900">{spa.name}</p>
-                <p className="text-sm text-foreground/60">
-                  {spa.cityName} &middot; {spa.isPublished ? "Published" : "Draft"}
-                </p>
-              </div>
-              <div className="flex gap-2 text-sm">
-                <Link
-                  href={`/vendor/spas/${spa.id}`}
-                  className="rounded-full bg-veda-700 px-4 py-1.5 text-white hover:bg-veda-600"
-                >
-                  Edit
-                </Link>
-                {spa.isPublished ? (
+            <div key={spa.id} className="rounded-2xl border border-veda-100 bg-white p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="font-medium text-veda-900">{spa.name}</p>
+                  <p className="text-sm text-foreground/60">
+                    {spa.clinicCode} &middot; {spa.cityName} &middot; {spa.isPublished ? "Published" : "Draft"}
+                  </p>
+                </div>
+                <div className="flex gap-2 text-sm">
                   <Link
-                    href={`/spas/${spa.slug}`}
-                    className="rounded-full border border-veda-300 px-4 py-1.5 hover:bg-veda-50"
+                    href={`/vendor/spas/${spa.id}`}
+                    className="rounded-full bg-veda-700 px-4 py-1.5 text-white hover:bg-veda-600"
                   >
-                    View
+                    Edit
                   </Link>
-                ) : null}
+                  {spa.isPublished ? (
+                    <Link
+                      href={`/spas/${spa.slug}`}
+                      className="rounded-full border border-veda-300 px-4 py-1.5 hover:bg-veda-50"
+                    >
+                      View
+                    </Link>
+                  ) : null}
+                </div>
               </div>
+              <p className="mt-3 text-sm text-foreground/75">
+                Bookings - Today - {spa.bookingsToday} | This week - {spa.bookingsThisWeek} |{" "}
+                <Link href={`/vendor/bookings?spaId=${spa.id}`} className="text-veda-700 underline hover:text-veda-900">
+                  View all bookings
+                </Link>
+              </p>
             </div>
           ))}
           {me.spas.length === 0 ? (
-            <p className="text-sm text-foreground/60">No spas yet. Add your first listing.</p>
+            <p className="text-sm text-foreground/60">
+              No clinics yet.{" "}
+              <Link href="/vendor/spas/new" className="text-veda-700 underline">
+                Add your first clinic
+              </Link>
+              .
+            </p>
           ) : null}
         </div>
       </section>

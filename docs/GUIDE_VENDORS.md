@@ -60,8 +60,9 @@ in person — so booking-fee and pay-at-spa modes work even **without** Stripe o
 - **Shopify collection handle** — if the platform sells your herbs/products through its Shopify
   store, put your collection's handle here (e.g. `kerala-ayurveda-herbs`) and a shop section
   appears on your spa page. See [`../SHOPIFY_SETUP.md`](../SHOPIFY_SETUP.md).
-- **Photos** — paste image URLs with alt text and a sort order; the first photo is your search
-  card image.
+- **Photos** — choose one or more JPEG/PNG/WebP/GIF files (max 8 MB each) and give each a
+  short title. Titles appear on the public spa gallery. Files are stored on the platform
+  server disk; the first photo is your search card image.
 - **Opening hours** — set open/close per weekday; leave a day empty to be closed. These hours
   generate your bookable session slots, so keep them accurate.
 
@@ -72,9 +73,10 @@ Add any number of each:
 - **Session** — a timed appointment (name, category, duration in minutes, price per person).
   Guests book specific start times on a 30-minute grid inside your opening hours. *V1 assumes
   one session at a time* — a booked slot blocks overlapping times.
-- **Retreat** — a multi-night program (name, category, nights, price per person). Retreats are
-  booked against **departures** you create: each departure has a start date and a capacity, and
-  the platform stops selling it when it's full.
+- **Retreat** — a multi-night program (name, category, nights, price per person). After you save
+  the retreat, add **start dates** and a capacity for each date. Guests pick one of those dates
+  on your listing; the platform stops selling a date when it is full. Seeded demo retreats already
+  have monthly departures — retreats you add yourself start with none until you add dates.
 
 Deactivate (rather than delete) a treatment to stop new bookings while keeping history intact.
 

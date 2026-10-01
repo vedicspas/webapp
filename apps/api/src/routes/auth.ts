@@ -5,6 +5,7 @@ import type { SessionUser } from "@vedic/shared";
 import { execute, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { signApiToken } from "../plugins/auth.js";
+import { ensureVendorAccount } from "../lib/vendorAccount.js";
 
 interface UserRow {
   id: number;
@@ -34,6 +35,14 @@ async function sessionPayload(row: UserRow): Promise<{ user: SessionUser; apiTok
   return { user, apiToken };
 }
 
+export async function issueSessionForUserId(
+  userId: number
+): Promise<{ user: SessionUser; apiToken: string }> {
+  const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [userId]);
+  if (!row) throw new Error("User not found");
+  return sessionPayload(row);
+}
+
 function usernameFrom(email: string): string {
   const base = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 40) || "user";
   return `${base}${Math.floor(1000 + Math.random() * 9000)}`;
@@ -46,6 +55,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         email: z.string().email(),
         password: z.string().min(8),
         name: z.string().min(1).max(120),
+        intent: z.enum(["visitor", "vendor", "traveler"]).optional().default("visitor"),
       })
       .parse(request.body);
 
@@ -54,17 +64,19 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(409).send({ error: "An account with this email already exists" });
     }
 
-    const roleId = (await staticCache.requireRole("traveler")).id;
+    const asVendor = body.intent === "vendor";
+    const roleId = (await staticCache.requireRole(asVendor ? "vendor" : "traveler")).id;
     const hash = await bcrypt.hash(body.password, 10);
     const result = await execute(
       "INSERT INTO users (role_id, email, password_hash, name, username) VALUES (?,?,?,?,?)",
       [roleId, body.email, hash, body.name, usernameFrom(body.email)]
     );
+    if (asVendor) await ensureVendorAccount(result.insertId, body.name);
     const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
     if (!row) {
       return reply.code(500).send({ error: "Failed to load the created account" });
     }
-    return sessionPayload(row);
+    return { ...(await sessionPayload(row)), created: true };
   });
 
   app.post("/auth/login", async (request, reply) => {
@@ -86,21 +98,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         email: z.string().email(),
         name: z.string().min(1).max(120),
         avatarUrl: z.string().url().nullable().optional(),
+        intent: z.enum(["visitor", "vendor", "traveler"]).optional(),
       })
       .parse(request.body);
 
     let row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [body.email]);
+    let created = false;
     if (!row) {
-      const roleId = (await staticCache.requireRole("traveler")).id;
+      created = true;
+      const asVendor = body.intent === "vendor";
+      const roleId = (await staticCache.requireRole(asVendor ? "vendor" : "traveler")).id;
       const result = await execute(
         "INSERT INTO users (role_id, email, name, username, avatar_url) VALUES (?,?,?,?,?)",
         [roleId, body.email, body.name, usernameFrom(body.email), body.avatarUrl ?? null]
       );
+      if (asVendor) await ensureVendorAccount(result.insertId, body.name);
       row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
     }
     if (!row) {
       return reply.code(500).send({ error: "Failed to load the created account" });
     }
-    return sessionPayload(row);
+    return { ...(await sessionPayload(row)), created };
   });
 }

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useSession, signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
+import { signOutAndGo } from "@/lib/signOut";
 
 const NAV = [
   { href: "/spas", label: "Find a spa" },
@@ -12,9 +13,10 @@ const NAV = [
 ];
 
 export function Header() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
   const user = session?.appUser;
+  const sessionReady = status !== "loading";
 
   return (
     <header className="sticky top-0 z-40 bg-veda-800 text-white shadow-md">
@@ -32,6 +34,9 @@ export function Header() {
               {item.label}
             </Link>
           ))}
+          <Link href="/list-spa" className="hover:text-turmeric-200">
+            List a spa
+          </Link>
           {user?.role === "vendor" || user?.role === "admin" ? (
             <Link href="/vendor" className="hover:text-turmeric-200">
               Vendor dashboard
@@ -42,7 +47,9 @@ export function Header() {
               Admin
             </Link>
           ) : null}
-          {user ? (
+          {!sessionReady ? (
+            <span className="inline-block h-8 w-24 animate-pulse rounded-full bg-white/20" />
+          ) : user ? (
             <span className="flex items-center gap-3">
               <Link href={`/profile/${user.username}`} className="flex items-center gap-2 hover:text-turmeric-200">
                 {user.avatarUrl ? (
@@ -51,7 +58,7 @@ export function Header() {
                 {user.name.split(" ")[0]}
               </Link>
               <button
-                onClick={() => signOut({ callbackUrl: "/" })}
+                onClick={() => void signOutAndGo("/")}
                 className="rounded-full border border-white/30 px-3 py-1 text-xs hover:bg-white/10"
               >
                 Sign out
@@ -85,6 +92,9 @@ export function Header() {
               {item.label}
             </Link>
           ))}
+          <Link href="/list-spa" className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
+            List a spa
+          </Link>
           {user?.role === "vendor" || user?.role === "admin" ? (
             <Link href="/vendor" className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
               Vendor dashboard
@@ -95,12 +105,14 @@ export function Header() {
               Admin
             </Link>
           ) : null}
-          {user ? (
+          {!sessionReady ? (
+            <span className="rounded px-2 py-2 text-white/60">Loading…</span>
+          ) : user ? (
             <>
               <Link href={`/profile/${user.username}`} className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
                 My profile
               </Link>
-              <button onClick={() => signOut({ callbackUrl: "/" })} className="rounded px-2 py-2 text-left hover:bg-white/10">
+              <button onClick={() => void signOutAndGo("/")} className="rounded px-2 py-2 text-left hover:bg-white/10">
                 Sign out
               </button>
             </>
