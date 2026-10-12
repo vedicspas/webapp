@@ -17,16 +17,16 @@ async function main() {
 
   console.log("Seeding database...");
 
-  // ---- Static lookup tables ----
-  await execute("INSERT INTO roles (code) VALUES ('traveler'), ('vendor'), ('admin')", []);
+  // ---- Static lookup tables (INSERT IGNORE so a partial first run can finish) ----
+  await execute("INSERT IGNORE INTO roles (code) VALUES ('traveler'), ('vendor'), ('admin')", []);
 
   await execute(
-    "INSERT INTO currencies (code, symbol) VALUES ('USD','$'), ('EUR','\u20ac'), ('INR','\u20b9'), ('LKR','Rs'), ('IDR','Rp')",
+    "INSERT IGNORE INTO currencies (code, symbol) VALUES ('USD','$'), ('EUR','\u20ac'), ('INR','\u20b9'), ('LKR','Rs'), ('IDR','Rp')",
     []
   );
 
   await execute(
-    `INSERT INTO countries (iso2, name) VALUES
+    `INSERT IGNORE INTO countries (iso2, name) VALUES
      ('IN','India'), ('LK','Sri Lanka'), ('ID','Indonesia'), ('US','United States'), ('DE','Germany')`,
     []
   );
@@ -45,19 +45,21 @@ async function main() {
     ["US", "Sedona", 34.8697, -111.761],
     ["DE", "Baden-Baden", 48.7606, 8.2396],
   ];
-  const cityIds = new Map<string, number>();
   for (const [iso2, name, lat, lng] of cities) {
-    const id = await insert("INSERT INTO cities (country_id, name, lat, lng) VALUES (?,?,?,?)", [
+    await execute("INSERT IGNORE INTO cities (country_id, name, lat, lng) VALUES (?,?,?,?)", [
       countryIds.get(iso2),
       name,
       lat,
       lng,
     ]);
-    cityIds.set(name, id);
+  }
+  const cityIds = new Map<string, number>();
+  for (const row of await query<{ id: number; name: string }>("SELECT id, name FROM cities")) {
+    cityIds.set(row.name, row.id);
   }
 
   await execute(
-    `INSERT INTO amenities (name, icon) VALUES
+    `INSERT IGNORE INTO amenities (name, icon) VALUES
      ('Steam room','steam'), ('Herbal pharmacy','pharmacy'), ('Yoga shala','yoga'),
      ('Vegetarian restaurant','restaurant'), ('Accommodation','bed'), ('Doctor consultation','doctor'),
      ('Meditation garden','garden'), ('Pool','pool'), ('Airport pickup','car'), ('Wi-Fi','wifi')`,
@@ -65,7 +67,7 @@ async function main() {
   );
 
   await execute(
-    `INSERT INTO treatment_categories (slug, name) VALUES
+    `INSERT IGNORE INTO treatment_categories (slug, name) VALUES
      ('abhyanga','Abhyanga Massage'), ('shirodhara','Shirodhara'), ('panchakarma','Panchakarma'),
      ('udvartana','Udvartana'), ('nasya','Nasya'), ('marma','Marma Therapy'),
      ('yoga-retreat','Yoga & Meditation Retreat'), ('detox-retreat','Detox Retreat'),
@@ -74,7 +76,7 @@ async function main() {
   );
 
   await execute(
-    `INSERT INTO payment_modes (code, name, description) VALUES
+    `INSERT IGNORE INTO payment_modes (code, name, description) VALUES
      ('full_prepay','Pay in full online','The full treatment price is charged online at booking time.'),
      ('deposit','Deposit online','A percentage deposit is charged online; the balance is paid at the spa.'),
      ('booking_fee','Booking fee','A small fixed booking fee is charged online; the treatment is paid at the spa.'),
@@ -83,7 +85,7 @@ async function main() {
   );
 
   await execute(
-    `INSERT INTO booking_statuses (code, name) VALUES
+    `INSERT IGNORE INTO booking_statuses (code, name) VALUES
      ('pending_payment','Pending payment'), ('confirmed','Confirmed'), ('cancelled','Cancelled'),
      ('completed','Completed'), ('no_show','No-show')`,
     []
