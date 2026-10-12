@@ -14,7 +14,7 @@ const nextConfig: NextConfig = {
       { protocol: "https", hostname: "fastly.picsum.photos" },
       { protocol: "https", hostname: "i.pravatar.cc" },
       { protocol: "https", hostname: "cdn.shopify.com" },
-      ...apiUploadPattern(),
+      ...(apiUploadPattern() ?? []),
     ],
   },
 };
