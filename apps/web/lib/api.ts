@@ -4,6 +4,7 @@ import type {
   Paginated,
   Question,
   ReviewListResponse,
+  SiteSettings,
   SpaDetail,
   SpaSummary,
   StaticMeta,
@@ -97,5 +98,13 @@ export const getReviews = (slug: string, page = 1) =>
   api<ReviewListResponse>(`/spas/${slug}/reviews?page=${page}`, { revalidate: 60 });
 export const getQuestions = (slug: string) =>
   api<Question[]>(`/spas/${slug}/questions`, { revalidate: 60 });
+
+export async function getSiteSettingsSafe(): Promise<SiteSettings> {
+  try {
+    return await api<SiteSettings>("/site-settings", { revalidate: 60 });
+  } catch {
+    return { contactEmail: null, contactPhone: null };
+  }
+}
 
 export type { Booking, CreateBookingResponse };
