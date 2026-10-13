@@ -1,4 +1,4 @@
-# VedaFinder — Architecture & Feature Reference
+# AyurvedaAdvisor.com — Architecture & Feature Reference
 
 This document describes everything that exists in the codebase: the system architecture, every
 feature and how it works internally, the database schema, the payment engine, and the caching
@@ -15,7 +15,7 @@ Companion documents:
 
 ## 1. System overview
 
-VedaFinder is a TripAdvisor-style marketplace specifically for Ayurvedic spas, panchakarma
+AyurvedaAdvisor.com is a TripAdvisor-style marketplace specifically for Ayurvedic spas, panchakarma
 hospitals, and wellness retreats. It combines:
 
 1. **Discovery** — search, filters, maps, reviews, Q&A, wishlists, public traveler profiles.

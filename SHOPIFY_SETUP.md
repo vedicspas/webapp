@@ -1,6 +1,6 @@
-# Shopify setup for VedaFinder
+# Shopify setup for AyurvedaAdvisor.com
 
-VedaFinder sells herbs and spa products **through Shopify**: the web app only *displays* each
+AyurvedaAdvisor.com sells herbs and spa products **through Shopify**: the web app only *displays* each
 spa's products and links shoppers to Shopify's hosted product pages and checkout. No product,
 inventory, or payment data for the shop is stored in our database — the only link is one column:
 `spas.shopify_collection_handle`.
@@ -29,7 +29,7 @@ MariaDB spas table                Shopify store
 
 1. Create a Shopify store (any plan; a development store works for testing).
 2. In Shopify admin go to **Settings → Apps and sales channels → Develop apps → Create an app**
-   (enable custom app development if prompted). Name it e.g. `VedaFinder Web`.
+   (enable custom app development if prompted). Name it e.g. `AyurvedaAdvisor Web`.
 3. Under **Configuration → Storefront API**, enable at least these scopes:
    - `unauthenticated_read_product_listings`
    - `unauthenticated_read_collection_listings`

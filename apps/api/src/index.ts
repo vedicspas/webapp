@@ -16,6 +16,7 @@ import { userRoutes } from "./routes/users.js";
 import { bookingRoutes } from "./routes/bookings.js";
 import { vendorRoutes } from "./routes/vendor.js";
 import { adminRoutes } from "./routes/admin.js";
+import { contactRoutes } from "./routes/contact.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 
 async function main() {
@@ -81,6 +82,7 @@ async function main() {
   await app.register(bookingRoutes);
   await app.register(vendorRoutes, { prefix: "" });
   await app.register(adminRoutes);
+  await app.register(contactRoutes);
   await app.register(webhookRoutes);
 
   // Set HOST=:: on platforms with IPv6 private networking (e.g. Railway).

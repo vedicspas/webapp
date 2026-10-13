@@ -18,8 +18,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "VedaFinder - Ayurvedic Spas & Health Centers",
-    template: "%s | VedaFinder",
+    default: "AyurvedaAdvisor.com - Ayurvedic Spas & Health Centers",
+    template: "%s | AyurvedaAdvisor.com",
   },
   description:
     "Discover, review and book authentic Ayurvedic spas, panchakarma centers and wellness retreats around the world.",

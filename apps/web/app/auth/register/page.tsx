@@ -69,7 +69,7 @@ function RegisterForm() {
   return (
     <div className="mx-auto max-w-lg px-4 py-12">
       <h1 className="text-2xl font-bold text-veda-900">Create your account</h1>
-      <p className="mt-1 text-sm text-foreground/60">Choose how you will use VedaFinder.</p>
+      <p className="mt-1 text-sm text-foreground/60">Choose how you will use AyurvedaAdvisor.com.</p>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         {ROLES.map((item) => {

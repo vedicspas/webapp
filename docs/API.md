@@ -1,4 +1,4 @@
-# VedaFinder — API Reference
+# AyurvedaAdvisor.com — API Reference
 
 The API is a standalone Fastify server (`apps/api`), default port **4100** (or the
 platform-injected `PORT` in production). All request/response bodies are JSON except the Stripe

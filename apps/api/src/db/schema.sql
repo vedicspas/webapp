@@ -5,6 +5,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
+  contact_messages, site_settings,
   review_moderation_events, review_photos, review_responses, reviews, bookings, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options, spas, vendors,
   users, booking_statuses, payment_modes, treatment_categories, amenities,
@@ -390,4 +391,29 @@ CREATE TABLE wishlist_items (
   PRIMARY KEY (user_id, spa_id),
   CONSTRAINT fk_wl_user FOREIGN KEY (user_id) REFERENCES users(id),
   CONSTRAINT fk_wl_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Site settings (key/value, cached in memory) and contact form
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE site_settings (
+  setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+  setting_value VARCHAR(500) NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE contact_messages (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NULL,
+  name VARCHAR(120) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  phone VARCHAR(32) NOT NULL,
+  subject VARCHAR(200) NOT NULL,
+  message TEXT NOT NULL,
+  is_read TINYINT(1) NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_contact_created (created_at),
+  KEY idx_contact_read (is_read),
+  CONSTRAINT fk_contact_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

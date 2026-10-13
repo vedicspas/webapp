@@ -5,7 +5,7 @@ export function Footer() {
     <footer className="mt-16 bg-veda-950 text-veda-200">
       <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 text-sm sm:grid-cols-3">
         <div>
-          <p className="mb-2 text-base font-semibold text-white">VedaFinder</p>
+          <img src="/logo-ayurvedaadvisor.svg" alt="AyurvedaAdvisor" className="mb-2 h-8 w-auto" />
           <p>
             Discover, review and book authentic Ayurvedic spas, panchakarma centers and wellness
             retreats around the world.
@@ -17,6 +17,8 @@ export function Footer() {
             <li><Link href="/spas" className="hover:text-white">All spas</Link></li>
             <li><Link href="/spas?sort=rating" className="hover:text-white">Top rated</Link></li>
             <li><Link href="/wishlist" className="hover:text-white">Your wishlist</Link></li>
+            <li><Link href="/contact" className="hover:text-white">Contact us</Link></li>
+            <li><Link href="/privacy-policy" className="hover:text-white">Privacy policy</Link></li>
           </ul>
         </div>
         <div>
@@ -28,7 +30,7 @@ export function Footer() {
         </div>
       </div>
       <p className="border-t border-white/10 py-4 text-center text-xs text-veda-400">
-        &copy; {new Date().getFullYear()} VedaFinder
+        &copy; {new Date().getFullYear()} AyurvedaAdvisor.com
       </p>
     </footer>
   );

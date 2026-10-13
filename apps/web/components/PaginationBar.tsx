@@ -8,12 +8,14 @@ export function PaginationBar({
   total,
   onPage,
   onPageSize,
+  pageSizes = PAGE_SIZES,
 }: {
   page: number;
   pageSize: number;
   total: number;
   onPage: (page: number) => void;
   onPageSize?: (size: number) => void;
+  pageSizes?: readonly number[];
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize) || 1);
   if (total === 0 && !onPageSize) return null;
@@ -32,7 +34,7 @@ export function PaginationBar({
               onChange={(e) => onPageSize(Number(e.target.value))}
               className="rounded-lg border border-veda-200 bg-white px-2 py-1"
             >
-              {PAGE_SIZES.map((n) => (
+              {pageSizes.map((n) => (
                 <option key={n} value={n}>
                   {n}
                 </option>

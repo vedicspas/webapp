@@ -1,6 +1,6 @@
 # Traveler Guide — Finding & Booking Ayurvedic Care
 
-This guide walks through everything a guest can do on VedaFinder, from browsing anonymously to
+This guide walks through everything a guest can do on AyurvedaAdvisor.com, from browsing anonymously to
 managing bookings. Demo accounts (seeded data): `asha@example.test` or `marco@example.test`,
 password `password123`.
 
@@ -71,7 +71,7 @@ In **Book your visit**:
 | Full prepayment | The full amount | Nothing |
 
 4. **Payment** (when something is due) — a secure Stripe card form appears. Card details go
-   directly from your browser to Stripe; VedaFinder never sees or stores your card number.
+   directly from your browser to Stripe; AyurvedaAdvisor.com never sees or stores your card number.
    On success you land on the confirmation screen with your **booking code** (e.g. `BK-7F3A2C`).
 
 Keep the code — it's your reference with the spa. If a slot gets taken while you're checking

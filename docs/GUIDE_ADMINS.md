@@ -1,4 +1,4 @@
-# Admin Guide — Operating the VedaFinder Platform
+# Admin Guide — Operating the AyurvedaAdvisor.com Platform
 
 For platform operators: moderating the marketplace, approving vendors, and understanding the
 money. Demo account (seeded data): `admin@vedicspas.test` / `password123`.

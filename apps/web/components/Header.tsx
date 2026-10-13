@@ -21,11 +21,8 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 bg-veda-800 text-white shadow-md">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
-        <Link href="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-          <span aria-hidden className="grid h-8 w-8 place-items-center rounded-full bg-turmeric-400 text-veda-900">
-            V
-          </span>
-          VedaFinder
+        <Link href="/" className="flex shrink-0 items-center" aria-label="AyurvedaAdvisor home">
+          <img src="/logo-ayurvedaadvisor.svg" alt="AyurvedaAdvisor" className="h-8 w-auto sm:h-12" />
         </Link>
 
         <nav className="hidden items-center gap-5 text-sm md:flex">

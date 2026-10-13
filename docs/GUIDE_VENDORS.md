@@ -1,4 +1,4 @@
-# Vendor Guide — Running Your Spa on VedaFinder
+# Vendor Guide — Running Your Spa on AyurvedaAdvisor.com
 
 Everything a spa/health-center owner needs: registration, approval, building a listing, getting
 paid, and day-to-day operations. Demo accounts (seeded data): `vendor1@vedicspas.test`,
@@ -27,7 +27,7 @@ here you reach the three work areas: **Listings**, **Bookings** (`/vendor/bookin
 To accept prepayments or deposits online you need a Stripe Express account:
 
 1. On the dashboard, click **Connect Stripe** — you're sent to Stripe's hosted onboarding to
-   enter identity and bank details. VedaFinder never sees this information.
+   enter identity and bank details. AyurvedaAdvisor.com never sees this information.
 2. When Stripe reports charges + payouts enabled, your dashboard shows **Payouts active**.
    (The status re-syncs when you return; click the status to refresh if needed.)
 

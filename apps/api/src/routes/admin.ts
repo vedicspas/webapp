@@ -70,7 +70,8 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
             SELECT id FROM booking_statuses WHERE code IN ('cancelled','no_show')
           )) AS grossBookingMinor,
         (SELECT COALESCE(SUM(platform_fee_minor), 0) FROM bookings WHERE paid_minor > 0) AS platformFeesMinor,
-        (SELECT COUNT(*) FROM reviews) AS reviews
+        (SELECT COUNT(*) FROM reviews) AS reviews,
+        (SELECT COUNT(*) FROM contact_messages WHERE is_read = 0) AS contactUnread
     `);
     return row;
   });
@@ -412,5 +413,97 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       pageSize,
       total: Number(totalRow?.n ?? 0),
     };
+  });
+
+  app.get("/admin/settings", async () => staticCache.siteSettings);
+
+  app.put("/admin/settings", async (request) => {
+    const body = z.object({
+      contactEmail: z.string().max(255).optional().nullable(),
+      contactPhone: z.string().max(32).optional().nullable(),
+    }).parse(request.body);
+
+    const email = body.contactEmail?.trim() || null;
+    const phone = body.contactPhone?.trim() || null;
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw Object.assign(new Error("Invalid Contact Us email"), { statusCode: 400 });
+    }
+
+    await execute(
+      `INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      ["contact_email", email]
+    );
+    await execute(
+      `INSERT INTO site_settings (setting_key, setting_value) VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)`,
+      ["contact_phone", phone]
+    );
+    await staticCache.reloadSiteSettings();
+    return staticCache.siteSettings;
+  });
+
+  app.get("/admin/contact-messages", async (request) => {
+    const q = z
+      .object({
+        name: z.string().max(120).optional(),
+        email: z.string().max(255).optional(),
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+      })
+      .parse(request.query);
+    const { page, pageSize, offset } = pagination(q);
+    const where = ["1=1"];
+    const values: unknown[] = [];
+    if (q.name?.trim()) {
+      where.push("name LIKE ?");
+      values.push(`%${q.name.trim()}%`);
+    }
+    if (q.email?.trim()) {
+      where.push("email LIKE ?");
+      values.push(`%${q.email.trim()}%`);
+    }
+    const whereSql = where.join(" AND ");
+    const totalRow = await queryOne<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM contact_messages WHERE ${whereSql}`,
+      values
+    );
+    const items = await query<{
+      id: number;
+      name: string;
+      email: string;
+      phone: string;
+      subject: string;
+      message: string;
+      isRead: number;
+      createdAt: string;
+    }>(
+      `SELECT id, name, email, phone, subject, message, is_read AS isRead, created_at AS createdAt
+       FROM contact_messages
+       WHERE ${whereSql}
+       ORDER BY created_at DESC
+       LIMIT ${pageSize} OFFSET ${offset}`,
+      values
+    );
+    return {
+      items: items.map((r) => ({ ...r, isRead: Boolean(r.isRead) })),
+      page,
+      pageSize,
+      total: Number(totalRow?.n ?? 0),
+    };
+  });
+
+  app.patch("/admin/contact-messages/:id/read", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const result = await execute("UPDATE contact_messages SET is_read = 1 WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Message not found" });
+    return { ok: true };
+  });
+
+  app.delete("/admin/contact-messages/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const result = await execute("DELETE FROM contact_messages WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Message not found" });
+    return { ok: true };
   });
 }

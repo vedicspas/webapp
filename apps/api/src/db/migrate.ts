@@ -155,6 +155,34 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     "INSERT IGNORE INTO treatment_categories (slug, name) VALUES ('other', 'Other')"
   );
 
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS site_settings (
+      setting_key VARCHAR(64) NOT NULL PRIMARY KEY,
+      setting_value VARCHAR(500) NULL,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS contact_messages (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      user_id BIGINT UNSIGNED NULL,
+      name VARCHAR(120) NOT NULL,
+      email VARCHAR(255) NOT NULL,
+      phone VARCHAR(32) NOT NULL,
+      subject VARCHAR(200) NOT NULL,
+      message TEXT NOT NULL,
+      is_read TINYINT(1) NOT NULL DEFAULT 0,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_contact_created (created_at),
+      KEY idx_contact_read (is_read),
+      CONSTRAINT fk_contact_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(conn, "ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS is_read TINYINT(1) NOT NULL DEFAULT 0");
+  await run(conn, "ALTER TABLE contact_messages ADD KEY idx_contact_read (is_read)");
+
   console.log("Schema patches applied.");
 }
 

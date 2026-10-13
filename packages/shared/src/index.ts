@@ -90,6 +90,12 @@ export interface StaticMeta {
   accommodationTypes: NamedLookup[];
 }
 
+/** Public contact details from `site_settings`, cached in API memory. */
+export interface SiteSettings {
+  contactEmail: string | null;
+  contactPhone: string | null;
+}
+
 // ---------- Core entities ----------
 
 export interface PublicUser {

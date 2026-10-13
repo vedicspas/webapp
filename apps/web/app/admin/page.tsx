@@ -22,6 +22,7 @@ interface Stats {
   grossBookingMinor: number;
   platformFeesMinor: number;
   reviews: number;
+  contactUnread: number;
 }
 
 interface AdminVendor {
@@ -80,6 +81,17 @@ interface AdminBooking {
   guestName: string;
 }
 
+interface AdminContactMessage {
+  id: number;
+  name: string;
+  email: string;
+  phone: string;
+  subject: string;
+  message: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 interface CategoryOption {
   id: number;
   name: string;
@@ -93,7 +105,7 @@ interface Paged<T> {
   categories?: CategoryOption[];
 }
 
-type Tab = "vendors" | "spas" | "reviews" | "bookings";
+type Tab = "vendors" | "spas" | "reviews" | "bookings" | "messages";
 
 const STATUS_BADGE: Record<VendorStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -169,7 +181,11 @@ export default function AdminPage() {
     categoryIds: [] as number[],
   });
   const [appliedVendor, setAppliedVendor] = useState({ name: "", email: "", from: "", to: "" });
+  const [contactName, setContactName] = useState("");
+  const [contactEmail, setContactEmail] = useState("");
+  const [appliedContact, setAppliedContact] = useState({ name: "", email: "" });
   const [categories, setCategories] = useState<CategoryOption[]>([]);
+  const [messages, setMessages] = useState<Paged<AdminContactMessage> | null>(null);
 
   const [vendors, setVendors] = useState<Paged<AdminVendor> | null>(null);
   const [spas, setSpas] = useState<Paged<AdminSpa> | null>(null);
@@ -201,6 +217,15 @@ export default function AdminPage() {
     return q.toString();
   }, [appliedVendor, page, pageSize]);
 
+  const contactQs = useMemo(() => {
+    const q = new URLSearchParams();
+    if (appliedContact.name.trim()) q.set("name", appliedContact.name.trim());
+    if (appliedContact.email.trim()) q.set("email", appliedContact.email.trim());
+    q.set("page", String(page));
+    q.set("pageSize", String(pageSize));
+    return q.toString();
+  }, [appliedContact, page, pageSize]);
+
   const loadStats = useCallback(async () => {
     const s = await call<Stats>("/admin/stats");
     setStats(s);
@@ -218,6 +243,8 @@ export default function AdminPage() {
         const data = await call<Paged<AdminReview>>(`/admin/reviews?${clinicQs}`);
         setReviews(data);
         setCategories(data.categories ?? []);
+      } else if (tab === "messages") {
+        setMessages(await call<Paged<AdminContactMessage>>(`/admin/contact-messages?${contactQs}`));
       } else {
         const data = await call<Paged<AdminBooking>>(`/admin/bookings?${clinicQs}`);
         setBookings(data);
@@ -227,7 +254,7 @@ export default function AdminPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load admin data");
     }
-  }, [call, tab, vendorQs, clinicQs]);
+  }, [call, tab, vendorQs, clinicQs, contactQs]);
 
   useEffect(() => {
     if (token && isAdmin) loadStats().catch(() => {});
@@ -240,6 +267,7 @@ export default function AdminPage() {
   function switchTab(next: Tab) {
     setTab(next);
     setPage(1);
+    if (next === "messages" && ![10, 20, 30].includes(pageSize)) setPageSize(10);
   }
 
   async function setVendorStatus(id: number, status: VendorStatus) {
@@ -280,6 +308,29 @@ export default function AdminPage() {
       loadTab();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not update review", "error");
+    }
+  }
+
+  async function markMessageRead(id: number) {
+    try {
+      await call(`/admin/contact-messages/${id}/read`, { method: "PATCH" });
+      toast("Marked as read.");
+      loadStats();
+      loadTab();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not update message", "error");
+    }
+  }
+
+  async function deleteMessage(id: number) {
+    if (!confirm("Delete this contact message? This cannot be undone.")) return;
+    try {
+      await call(`/admin/contact-messages/${id}`, { method: "DELETE" });
+      toast("Message deleted.");
+      loadStats();
+      loadTab();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not delete message", "error");
     }
   }
 
@@ -365,7 +416,12 @@ export default function AdminPage() {
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
-      <h1 className="text-2xl font-bold text-veda-900">Admin dashboard</h1>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-2xl font-bold text-veda-900">Admin dashboard</h1>
+        <Link href="/admin/settings" className="text-sm text-veda-700 underline hover:text-veda-900">
+          Site settings
+        </Link>
+      </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 
       {stats ? (
@@ -393,6 +449,7 @@ export default function AdminPage() {
             ["spas", "Listings"],
             ["reviews", "Reviews"],
             ["bookings", "Bookings"],
+            ["messages", `Contact Us Messages${stats?.contactUnread ? ` (${stats.contactUnread})` : ""}`],
           ] as [Tab, string][]
         ).map(([key, tabLabel]) => (
           <button
@@ -648,6 +705,113 @@ export default function AdminPage() {
             page={bookings?.page ?? page}
             pageSize={bookings?.pageSize ?? pageSize}
             total={bookings?.total ?? 0}
+            onPage={setPage}
+            onPageSize={(n) => {
+              setPageSize(n);
+              setPage(1);
+            }}
+          />
+        </div>
+      ) : null}
+
+      {tab === "messages" ? (
+        <div className="mt-4">
+          <form
+            className="space-y-3 rounded-2xl border border-veda-100 bg-white p-4"
+            onSubmit={(e) => {
+              e.preventDefault();
+              setPage(1);
+              setAppliedContact({ name: contactName, email: contactEmail });
+            }}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className={label}>
+                Name
+                <input className={input} value={contactName} onChange={(e) => setContactName(e.target.value)} />
+              </label>
+              <label className={label}>
+                Email
+                <input className={input} value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+              </label>
+            </div>
+            <div className="flex flex-wrap justify-center gap-3">
+              <button type="submit" className="rounded-full bg-blue-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-blue-500">
+                Search
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-veda-300 bg-white px-5 py-1.5 text-sm hover:bg-veda-50"
+                onClick={() => {
+                  setContactName("");
+                  setContactEmail("");
+                  setAppliedContact({ name: "", email: "" });
+                  setPage(1);
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-veda-100 bg-white">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-veda-100 bg-veda-50 text-xs uppercase tracking-wide text-foreground/60">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Email</th>
+                  <th className="px-4 py-3 font-medium">Phone#</th>
+                  <th className="px-4 py-3 font-medium">Message</th>
+                  <th className="px-4 py-3 font-medium"> </th>
+                </tr>
+              </thead>
+              <tbody>
+                {(messages?.items ?? []).map((m) => (
+                  <tr key={m.id} className={`border-b border-veda-50 last:border-0 ${m.isRead ? "" : "bg-veda-50/70"}`}>
+                    <td className={`whitespace-nowrap px-4 py-3 align-top ${m.isRead ? "" : "font-semibold text-veda-900"}`}>
+                      {m.name}
+                    </td>
+                    <td className="px-4 py-3 align-top break-all">{m.email}</td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top">{m.phone}</td>
+                    <td className="max-w-sm px-4 py-3 align-top">
+                      {m.subject ? <p className="font-medium text-veda-900">{m.subject}</p> : null}
+                      <p className="whitespace-pre-wrap text-foreground/80">{m.message}</p>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-top">
+                      <div className="flex flex-col gap-2 sm:flex-row">
+                        {!m.isRead ? (
+                          <button
+                            type="button"
+                            onClick={() => markMessageRead(m.id)}
+                            className="rounded-full bg-veda-700 px-3 py-1 text-xs text-white hover:bg-veda-600"
+                          >
+                            Mark as read
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => deleteMessage(m.id)}
+                          className="rounded-full border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(messages?.items ?? []).length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-foreground/50">
+                      No contact messages.
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+          <PaginationBar
+            page={messages?.page ?? page}
+            pageSize={messages?.pageSize ?? pageSize}
+            total={messages?.total ?? 0}
+            pageSizes={[10, 20, 30]}
             onPage={setPage}
             onPageSize={(n) => {
               setPageSize(n);

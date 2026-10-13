@@ -74,7 +74,7 @@ export default function VendorDashboardPage() {
   if (notVendor) {
     return (
       <div className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold text-veda-900">List your spa on VedaFinder</h1>
+        <h1 className="text-2xl font-bold text-veda-900">List your spa on AyurvedaAdvisor.com</h1>
         <p className="mt-2 text-foreground/60">
           Create a free vendor account to publish your center, take bookings and reply to reviews.
         </p>
@@ -96,7 +96,7 @@ export default function VendorDashboardPage() {
 
       {me.status === "pending" ? (
         <p className="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Your vendor account is <strong>awaiting approval</strong> by the VedaFinder team. You can
+          Your vendor account is <strong>awaiting approval</strong> by the AyurvedaAdvisor.com team. You can
           prepare your listings, treatments and Stripe setup now; publishing goes live once you are
           approved.
         </p>

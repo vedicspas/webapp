@@ -1,4 +1,4 @@
-# VedaFinder — Ayurvedic spa discovery & booking
+# AyurvedaAdvisor.com — Ayurvedic spa discovery & booking
 
 A mobile-first web application, like TripAdvisor but specifically for Ayurvedic spas and health
 centers: search, reviews, Q&A, wishlists, public profiles, built-in reservations paid through

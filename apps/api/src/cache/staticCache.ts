@@ -7,6 +7,7 @@ import type {
   NamedLookup,
   PaymentMode,
   Role,
+  SiteSettings,
   StaticMeta,
   TreatmentCategory,
 } from "@vedic/shared";
@@ -29,6 +30,7 @@ class StaticCache {
   languages: NamedLookup[] = [];
   dietaryOptions: NamedLookup[] = [];
   accommodationTypes: NamedLookup[] = [];
+  siteSettings: SiteSettings = { contactEmail: null, contactPhone: null };
 
   private byId = {
     cities: new Map<number, City>(),
@@ -84,6 +86,7 @@ class StaticCache {
     this.languages = languages;
     this.dietaryOptions = dietaryOptions;
     this.accommodationTypes = accommodationTypes;
+    await this.reloadSiteSettings();
 
     this.byId.cities = new Map(cities.map((c) => [c.id, c]));
     this.byId.currencies = new Map(currencies.map((c) => [c.id, c]));
@@ -130,6 +133,17 @@ class StaticCache {
 
   roleByCode(code: string): Role | undefined {
     return this.roles.find((r) => r.code === code);
+  }
+
+  /** Reloads only `site_settings` so contact details stay current after admin save. */
+  async reloadSiteSettings(): Promise<void> {
+    const rows = await query<{ setting_key: string; setting_value: string | null }>(
+      "SELECT setting_key, setting_value FROM site_settings"
+    ).catch(() => []);
+    const map = new Map(rows.map((r) => [r.setting_key, (r.setting_value ?? "").trim()]));
+    const email = map.get("contact_email") || null;
+    const phone = map.get("contact_phone") || null;
+    this.siteSettings = { contactEmail: email, contactPhone: phone };
   }
 
   /**
