@@ -26,6 +26,6 @@ COPY --from=build /repo/packages/shared packages/shared
 COPY --from=build /repo/apps/api/dist apps/api/dist
 COPY --from=build /repo/apps/api/package.json apps/api/package.json
 COPY --from=build /repo/apps/api/node_modules apps/api/node_modules
-RUN mkdir -p /data/uploads/reviews /repo/uploads/reviews
+RUN mkdir -p /data/uploads/reviews /data/uploads/avatars /repo/uploads/reviews /repo/uploads/avatars
 EXPOSE 4100
 CMD ["node", "apps/api/dist/index.js"]

@@ -18,6 +18,7 @@ import {
 } from "@vedic/shared";
 import { shortDate } from "@/lib/format";
 import { RatingControl, RatingDisplay, RatingStars } from "@/components/RatingStars";
+import { UserAvatar } from "@/components/UserAvatar";
 import { toast } from "@/stores/toastStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
@@ -355,19 +356,7 @@ function ReviewCard({ review }: { review: Review }) {
   return (
     <article className="rounded-2xl border border-veda-100 bg-white p-4">
       <div className="flex items-center gap-3">
-        {review.user.avatarUrl ? (
-          <Image
-            src={review.user.avatarUrl}
-            alt=""
-            width={36}
-            height={36}
-            className="rounded-full"
-          />
-        ) : (
-          <span className="grid h-9 w-9 place-items-center rounded-full bg-veda-100 text-veda-700">
-            {review.user.name[0]}
-          </span>
-        )}
+        <UserAvatar name={review.user.name} src={review.user.avatarUrl} size={36} />
         <div>
           <Link
             href={`/profile/${review.user.username}`}

@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import multipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import { mkdirSync } from "node:fs";
+import { join } from "node:path";
 import { config } from "./config.js";
 import { staticCache } from "./cache/staticCache.js";
 import { optionalAuth } from "./plugins/auth.js";
@@ -24,6 +25,7 @@ async function main() {
 
   mkdirSync(config.uploadDir, { recursive: true });
   mkdirSync(config.reviewUploadDir, { recursive: true });
+  mkdirSync(join(config.uploadDir, "avatars"), { recursive: true });
 
   await app.register(cors, {
     origin: [config.webOrigin],

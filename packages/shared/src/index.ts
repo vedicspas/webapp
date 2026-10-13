@@ -98,6 +98,8 @@ export interface SiteSettings {
 
 // ---------- Core entities ----------
 
+export const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+
 export interface PublicUser {
   id: number;
   username: string;
@@ -105,6 +107,8 @@ export interface PublicUser {
   avatarUrl: string | null;
   bio: string | null;
   createdAt: string;
+  /** Present only when the requester is viewing their own profile. */
+  email?: string;
 }
 
 export type TreatmentKind = "session" | "retreat";

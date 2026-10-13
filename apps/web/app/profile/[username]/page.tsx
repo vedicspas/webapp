@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { auth } from "@/auth";
 import { api, ApiError } from "@/lib/api";
 import { RatingStars } from "@/components/RatingStars";
+import { UserAvatar } from "@/components/UserAvatar";
 import { shortDate } from "@/lib/format";
 
 export const revalidate = 120;
@@ -16,6 +17,7 @@ interface Profile {
     avatarUrl: string | null;
     bio: string | null;
     createdAt: string;
+    email?: string;
   };
   reviews: {
     id: number;
@@ -28,9 +30,11 @@ interface Profile {
   }[];
 }
 
-async function loadProfile(username: string): Promise<Profile> {
+async function loadProfile(username: string, token?: string): Promise<Profile> {
   try {
-    return await api<Profile>(`/users/${username}`, { revalidate: 120 });
+    return await api<Profile>(`/users/${username}`, {
+      ...(token ? { token, revalidate: false } : { revalidate: 120 }),
+    });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) notFound();
     throw err;
@@ -46,29 +50,29 @@ export async function generateMetadata({
 
 export default async function ProfilePage({ params }: PageProps<"/profile/[username]">) {
   const { username } = await params;
-  const profile = await loadProfile(username);
+  const session = await auth();
+  const isOwner = session?.appUser?.username === username;
+  const profile = await loadProfile(username, isOwner ? session?.apiToken : undefined);
+  const email = profile.user.email ?? (isOwner ? session?.appUser?.email : undefined);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-10">
       <div className="flex items-center gap-4">
-        {profile.user.avatarUrl ? (
-          <Image
-            src={profile.user.avatarUrl}
-            alt=""
-            width={72}
-            height={72}
-            className="rounded-full"
-          />
-        ) : (
-          <span className="grid h-18 w-18 place-items-center rounded-full bg-veda-100 text-2xl text-veda-700">
-            {profile.user.name[0]}
-          </span>
-        )}
+        <UserAvatar name={profile.user.name} src={profile.user.avatarUrl} size={72} />
         <div>
           <h1 className="text-2xl font-bold text-veda-900">{profile.user.name}</h1>
           <p className="text-sm text-foreground/60">
             @{profile.user.username} &middot; member since {shortDate(profile.user.createdAt)}
           </p>
+          {email ? <p className="mt-1 text-sm text-foreground/70">{email}</p> : null}
+          {isOwner ? (
+            <Link
+              href={`/profile/${profile.user.username}/edit`}
+              className="mt-2 inline-block text-sm font-medium text-veda-700 hover:underline"
+            >
+              Edit basic info
+            </Link>
+          ) : null}
         </div>
       </div>
 

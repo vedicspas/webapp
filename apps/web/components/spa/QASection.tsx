@@ -6,6 +6,7 @@ import { useSession } from "next-auth/react";
 import type { Question } from "@vedic/shared";
 import { shortDate } from "@/lib/format";
 import { toast } from "@/stores/toastStore";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -110,26 +111,40 @@ export function QASection({ slug, initial }: { slug: string; initial: Question[]
         ) : null}
         {questions.map((q) => (
           <div key={q.id} className="rounded-2xl border border-veda-100 bg-white p-4">
-            <p className="text-sm">
-              <span className="font-medium text-veda-900">{q.user.name}</span>{" "}
-              <span className="text-xs text-foreground/50">{shortDate(q.createdAt)}</span>
-            </p>
-            <p className="mt-1 text-sm text-foreground/85">{q.body}</p>
+            <div className="flex items-start gap-3">
+              <UserAvatar name={q.user.name} src={q.user.avatarUrl} size={36} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">
+                  <Link href={`/profile/${q.user.username}`} className="font-medium text-veda-900 hover:underline">
+                    {q.user.name}
+                  </Link>{" "}
+                  <span className="text-xs text-foreground/50">{shortDate(q.createdAt)}</span>
+                </p>
+                <p className="mt-1 text-sm text-foreground/85">{q.body}</p>
+              </div>
+            </div>
 
             {q.answers.map((a) => (
               <div
                 key={a.id}
-                className={`mt-2 rounded-xl p-3 text-sm ${a.isVendor ? "bg-turmeric-50" : "bg-veda-50"}`}
+                className={`mt-3 rounded-xl p-3 text-sm ${a.isVendor ? "bg-turmeric-50" : "bg-veda-50"}`}
               >
-                <p className="text-xs font-semibold">
-                  {a.user.name}
-                  {a.isVendor ? (
-                    <span className="ml-2 rounded-full bg-turmeric-200 px-2 py-0.5 text-[10px] uppercase tracking-wide text-turmeric-900">
-                      Spa owner
-                    </span>
-                  ) : null}
-                </p>
-                <p className="mt-1 text-foreground/80">{a.body}</p>
+                <div className="flex items-start gap-3">
+                  <UserAvatar name={a.user.name} src={a.user.avatarUrl} size={36} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold">
+                      <Link href={`/profile/${a.user.username}`} className="hover:underline">
+                        {a.user.name}
+                      </Link>
+                      {a.isVendor ? (
+                        <span className="ml-2 rounded-full bg-turmeric-200 px-2 py-0.5 text-[10px] uppercase tracking-wide text-turmeric-900">
+                          Spa owner
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="mt-1 text-foreground/80">{a.body}</p>
+                  </div>
+                </div>
               </div>
             ))}
 

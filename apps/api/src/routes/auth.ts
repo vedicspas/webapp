@@ -6,6 +6,7 @@ import { execute, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { signApiToken } from "../plugins/auth.js";
 import { ensureVendorAccount } from "../lib/vendorAccount.js";
+import { publicPhotoUrl } from "../lib/uploads.js";
 
 interface UserRow {
   id: number;
@@ -29,7 +30,7 @@ async function sessionPayload(row: UserRow): Promise<{ user: SessionUser; apiTok
     name: row.name,
     username: row.username,
     role: row.role_code as SessionUser["role"],
-    avatarUrl: row.avatar_url,
+    avatarUrl: publicPhotoUrl(row.avatar_url),
   };
   const apiToken = await signApiToken({ id: row.id, email: row.email, role: user.role });
   return { user, apiToken };

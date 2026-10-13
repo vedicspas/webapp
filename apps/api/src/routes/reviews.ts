@@ -19,6 +19,7 @@ import {
 } from "../lib/reviewValidation.js";
 import { summarizeReviews, type ReviewStatRow } from "../lib/reviewStats.js";
 import { saveReviewPhotos, safeReviewPhotoName } from "../lib/reviewPhotos.js";
+import { publicPhotoUrl } from "../lib/uploads.js";
 
 interface ReviewRow {
   id: number;
@@ -119,7 +120,7 @@ export function toReview(row: ReviewRow, photos: ReviewPhoto[] = []): Review {
       id: row.user_id,
       username: row.username,
       name: row.user_name,
-      avatarUrl: row.avatar_url,
+      avatarUrl: publicPhotoUrl(row.avatar_url),
       bio: row.user_bio,
       createdAt: new Date(row.user_created_at).toISOString(),
     },

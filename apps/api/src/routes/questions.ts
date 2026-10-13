@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Answer, Question } from "@vedic/shared";
 import { execute, query, queryOne } from "../db/pool.js";
 import { requireAuth } from "../plugins/auth.js";
+import { publicPhotoUrl } from "../lib/uploads.js";
 
 interface QuestionRow {
   id: number;
@@ -26,7 +27,7 @@ function publicUser(row: QuestionRow) {
     id: row.user_id,
     username: row.username,
     name: row.user_name,
-    avatarUrl: row.avatar_url,
+    avatarUrl: publicPhotoUrl(row.avatar_url),
     bio: null,
     createdAt: new Date(row.user_created_at).toISOString(),
   };

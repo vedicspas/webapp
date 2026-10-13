@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useSession } from "next-auth/react";
 import { signOutAndGo } from "@/lib/signOut";
+import { UserAvatar } from "@/components/UserAvatar";
 
 const NAV = [
   { href: "/spas", label: "Find a spa" },
@@ -49,9 +49,12 @@ export function Header() {
           ) : user ? (
             <span className="flex items-center gap-3">
               <Link href={`/profile/${user.username}`} className="flex items-center gap-2 hover:text-turmeric-200">
-                {user.avatarUrl ? (
-                  <Image src={user.avatarUrl} alt="" width={28} height={28} className="rounded-full" />
-                ) : null}
+                <UserAvatar
+                  name={user.name}
+                  src={user.avatarUrl}
+                  size={28}
+                  className="bg-white/15 text-white"
+                />
                 {user.name.split(" ")[0]}
               </Link>
               <button
