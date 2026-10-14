@@ -86,7 +86,9 @@ interface SpaForm {
   description: string;
   addressLine: string;
   postalCode: string;
-  cityId: number;
+  countryId: number;
+  state: string;
+  cityName: string;
   lat: number;
   lng: number;
   phone: string | null;
@@ -112,7 +114,9 @@ const EMPTY: SpaForm = {
   description: "",
   addressLine: "",
   postalCode: "",
-  cityId: 0,
+  countryId: 0,
+  state: "",
+  cityName: "",
   lat: 0,
   lng: 0,
   phone: null,
@@ -185,7 +189,9 @@ export default function VendorSpaEditPage() {
       description: string;
       addressLine: string;
       postalCode: string;
-      cityId: number;
+      countryId: number | null;
+      state: string;
+      cityName: string;
       lat: number;
       lng: number;
       phone: string | null;
@@ -201,6 +207,9 @@ export default function VendorSpaEditPage() {
     setForm({
       ...EMPTY,
       ...data,
+      countryId: data.countryId ?? 0,
+      state: data.state ?? "",
+      cityName: data.cityName ?? "",
       depositBps: data.depositBps ?? 2000,
       bookingFeeMinor: data.bookingFeeMinor ?? 500,
       languages: (data.languages ?? []).map((l) => l.name),
@@ -524,18 +533,14 @@ export default function VendorSpaEditPage() {
         </label>
         <div className="grid gap-3 sm:grid-cols-2">
           <label className={label}>
-            City
+            Country
             <select
               className={input}
-              value={form.cityId || ""}
-              onChange={(e) => {
-                const cityId = Number(e.target.value);
-                const city = meta.cities.find((c) => c.id === cityId);
-                set({ cityId, lat: form.lat || city?.lat || 0, lng: form.lng || city?.lng || 0 });
-              }}
+              value={form.countryId || ""}
+              onChange={(e) => set({ countryId: Number(e.target.value) })}
             >
-              <option value="">Select a city</option>
-              {meta.cities.map((c) => (
+              <option value="">Select a country</option>
+              {(meta?.countries ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
@@ -543,8 +548,20 @@ export default function VendorSpaEditPage() {
             </select>
           </label>
           <label className={label}>
+            State
+            <input className={input} value={form.state} onChange={(e) => set({ state: e.target.value })} />
+          </label>
+          <label className={`${label} sm:col-span-2`}>
             Address
             <input className={input} value={form.addressLine} onChange={(e) => set({ addressLine: e.target.value })} />
+          </label>
+          <label className={label}>
+            City
+            <input className={input} value={form.cityName} onChange={(e) => set({ cityName: e.target.value })} />
+          </label>
+          <label className={label}>
+            Pin
+            <input className={input} value={form.postalCode} onChange={(e) => set({ postalCode: e.target.value })} />
           </label>
           <label className={label}>
             Latitude
@@ -1098,7 +1115,7 @@ export default function VendorSpaEditPage() {
         </label>
         <button
           onClick={save}
-          disabled={busy || !form.name || !form.cityId}
+          disabled={busy || !form.name || !form.countryId || !form.cityName.trim()}
           className="ml-auto rounded-full bg-turmeric-400 px-6 py-2 font-semibold text-veda-900 hover:bg-turmeric-300 disabled:opacity-50"
         >
           {busy ? "Saving\u2026" : isNew ? "Create listing" : "Save changes"}

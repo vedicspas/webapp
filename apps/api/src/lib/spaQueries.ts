@@ -8,7 +8,12 @@ export interface SpaSummaryRow {
   slug: string;
   name: string;
   shortDescription: string;
-  cityId: number;
+  cityId: number | null;
+  countryId: number | null;
+  state: string;
+  cityName: string;
+  addressLine: string;
+  postalCode: string;
   lat: number;
   lng: number;
   paymentModeId: number;
@@ -22,7 +27,9 @@ export interface SpaSummaryRow {
 
 export const SPA_SUMMARY_SELECT = `
   SELECT s.id, s.slug, s.name, s.short_description AS shortDescription,
-    s.city_id AS cityId, s.lat, s.lng,
+    s.city_id AS cityId, s.country_id AS countryId, s.state, s.city_name AS cityName,
+    s.address_line AS addressLine, s.postal_code AS postalCode,
+    s.lat, s.lng,
     s.payment_mode_id AS paymentModeId, s.currency_id AS currencyId,
     (SELECT p.url FROM spa_photos p WHERE p.spa_id = s.id ORDER BY p.sort_order LIMIT 1) AS coverPhotoUrl,
     COALESCE(r.avg_rating, 0) AS ratingAvg,
@@ -55,16 +62,23 @@ export async function amenityIdsBySpa(spaIds: number[]): Promise<Map<number, num
 }
 
 export function toSpaSummary(row: SpaSummaryRow, amenityIds: number[]): SpaSummary {
-  const city = staticCache.city(row.cityId);
-  const country = city ? staticCache.country(city.countryId) : undefined;
+  const city = row.cityId ? staticCache.city(Number(row.cityId)) : undefined;
+  const country = row.countryId
+    ? staticCache.country(Number(row.countryId))
+    : city
+      ? staticCache.country(city.countryId)
+      : undefined;
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
     shortDescription: row.shortDescription,
-    cityId: row.cityId,
-    cityName: city?.name ?? "",
+    cityId: row.cityId == null ? null : Number(row.cityId),
+    cityName: (row.cityName || city?.name || "").trim(),
+    state: (row.state || "").trim(),
     countryName: country?.name ?? "",
+    addressLine: (row.addressLine || "").trim(),
+    postalCode: (row.postalCode || "").trim(),
     lat: Number(row.lat),
     lng: Number(row.lng),
     coverPhotoUrl: publicPhotoUrl(row.coverPhotoUrl),

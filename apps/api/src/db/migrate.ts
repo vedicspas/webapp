@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
-import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES } from "./lookups.js";
+import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES, countriesInsertSql } from "./lookups.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -182,6 +182,35 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   );
   await run(conn, "ALTER TABLE contact_messages ADD COLUMN IF NOT EXISTS is_read TINYINT(1) NOT NULL DEFAULT 0");
   await run(conn, "ALTER TABLE contact_messages ADD KEY idx_contact_read (is_read)");
+
+  await conn.query(countriesInsertSql());
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS country_id SMALLINT UNSIGNED NULL");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS state VARCHAR(100) NOT NULL DEFAULT ''");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS city_name VARCHAR(100) NOT NULL DEFAULT ''");
+  await conn.query(
+    `UPDATE spas s JOIN cities c ON c.id = s.city_id
+     SET s.city_name = IF(s.city_name = '', c.name, s.city_name),
+         s.country_id = COALESCE(s.country_id, c.country_id)
+     WHERE s.city_id IS NOT NULL`
+  );
+  await conn.query(
+    `UPDATE spas SET state = CASE city_name
+       WHEN 'Rishikesh' THEN 'Uttarakhand'
+       WHEN 'Kochi' THEN 'Kerala'
+       WHEN 'Goa' THEN 'Goa'
+       WHEN 'Colombo' THEN 'Western Province'
+       WHEN 'Ubud' THEN 'Bali'
+       WHEN 'Sedona' THEN 'Arizona'
+       ELSE state
+     END
+     WHERE state = '' AND city_name IN ('Rishikesh','Kochi','Goa','Colombo','Ubud','Sedona')`
+  );
+  await run(conn, "ALTER TABLE spas MODIFY COLUMN city_id INT UNSIGNED NULL");
+  await run(
+    conn,
+    `ALTER TABLE spas ADD CONSTRAINT fk_spa_country
+      FOREIGN KEY (country_id) REFERENCES countries(id)`
+  );
 
   console.log("Schema patches applied.");
 }

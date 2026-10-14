@@ -4,7 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import Link from "next/link";
 import type { SpaSummary } from "@vedic/shared";
-import { money } from "@/lib/format";
+import { formatSpaLocality, money } from "@/lib/format";
 
 // Leaflet's default marker images don't survive bundling; use an inline SVG pin.
 const pin = L.divIcon({
@@ -37,7 +37,7 @@ export default function SpaMap({ spas }: { spas: SpaSummary[] }) {
               {spa.name}
             </Link>
             <br />
-            {spa.cityName}
+            {formatSpaLocality(spa)}
             {spa.priceFromMinor !== null ? (
               <>
                 {" "}

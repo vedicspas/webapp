@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { RemotePhoto } from "./RemotePhoto";
 import type { SpaSummary } from "@vedic/shared";
-import { money, PAYMENT_MODE_LABELS } from "@/lib/format";
+import { formatSpaAddress, money, PAYMENT_MODE_LABELS } from "@/lib/format";
 import { RatingStars } from "./RatingStars";
 import { WishlistButton } from "./WishlistButton";
 
@@ -30,7 +30,7 @@ export function SpaCard({ spa }: { spa: SpaSummary & { distanceKm?: number } }) 
       </div>
       <div className="space-y-1.5 p-4">
         <p className="text-xs uppercase tracking-wide text-veda-500">
-          {spa.cityName}, {spa.countryName}
+          {formatSpaAddress(spa)}
         </p>
         <h3 className="font-semibold leading-snug text-veda-900">{spa.name}</h3>
         <RatingStars rating={spa.ratingAvg} count={spa.ratingCount} />

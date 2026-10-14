@@ -37,6 +37,47 @@ export const PAYMENT_MODE_LABELS: Record<string, string> = {
   pay_at_spa: "Free reservation, pay at the spa",
 };
 
+export function formatSpaAddress(parts: {
+  addressLine?: string | null;
+  cityName?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+  countryName?: string | null;
+}): string {
+  return [parts.addressLine, parts.cityName, parts.state, parts.postalCode, parts.countryName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
+}
+
+export function formatSpaLocality(parts: {
+  cityName?: string | null;
+  state?: string | null;
+  countryName?: string | null;
+}): string {
+  return [parts.cityName, parts.state, parts.countryName]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part))
+    .join(", ");
+}
+
+export function googleMapsUrl(opts: {
+  lat?: number | null;
+  lng?: number | null;
+  address?: string | null;
+}): string | null {
+  if (opts.lat != null && opts.lng != null) {
+    const lat = Number(opts.lat);
+    const lng = Number(opts.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+    }
+  }
+  const q = opts.address?.trim();
+  if (!q) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
 export const ON_REQUEST_LABELS: Record<"on_request" | "not_available", string> = {
   on_request: "Available on request",
   not_available: "Not available",

@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import type { Paginated, SpaSummary } from "@vedic/shared";
+import { formatSpaLocality } from "@/lib/format";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -144,7 +145,7 @@ export function HomeSearchBar() {
                 >
                   <span className="font-bold text-veda-900">{spa.name}</span>
                   <span className="text-xs text-foreground/60">
-                    {spa.cityName}, {spa.countryName}
+                    {formatSpaLocality(spa)}
                   </span>
                 </button>
               </li>

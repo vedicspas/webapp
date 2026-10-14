@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 import { pool, execute, query } from "./pool.js";
-import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES } from "./lookups.js";
+import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES, countriesInsertSql } from "./lookups.js";
 
 async function insert(sql: string, params: unknown[]): Promise<number> {
   const result = await execute(sql, params);
@@ -25,11 +25,7 @@ async function main() {
     []
   );
 
-  await execute(
-    `INSERT IGNORE INTO countries (iso2, name) VALUES
-     ('IN','India'), ('LK','Sri Lanka'), ('ID','Indonesia'), ('US','United States'), ('DE','Germany')`,
-    []
-  );
+  await execute(countriesInsertSql(), []);
 
   const countryIds = new Map<string, number>();
   for (const row of await query<{ id: number; iso2: string }>("SELECT id, iso2 FROM countries")) {
@@ -54,6 +50,7 @@ async function main() {
     ]);
   }
   const cityIds = new Map<string, number>();
+  const cityCountryIso = new Map(cities.map(([iso2, name]) => [name, iso2]));
   for (const row of await query<{ id: number; name: string }>("SELECT id, name FROM cities")) {
     cityIds.set(row.name, row.id);
   }
@@ -168,6 +165,7 @@ async function main() {
     name: string;
     short: string;
     city: string;
+    state: string;
     lat: number;
     lng: number;
     mode: string;
@@ -184,7 +182,7 @@ async function main() {
       slug: "ganga-veda-rishikesh",
       name: "Ganga Veda Ayurveda Center",
       short: "Riverside panchakarma and yoga center in the yoga capital of the world.",
-      city: "Rishikesh", lat: 30.1087, lng: 78.2932,
+      city: "Rishikesh", state: "Uttarakhand", lat: 30.1087, lng: 78.2932,
       mode: "deposit", depositBps: 2000, currency: "USD",
       shopifyHandle: "ganga-veda", amenities: [1, 2, 3, 4, 6, 7, 10],
     },
@@ -193,7 +191,7 @@ async function main() {
       slug: "kerala-roots-kochi",
       name: "Kerala Roots Ayurveda Hospital",
       short: "Classical Kerala panchakarma hospital with in-house herbal pharmacy.",
-      city: "Kochi", lat: 9.9525, 
+      city: "Kochi", state: "Kerala", lat: 9.9525, 
       lng: 76.301,
       mode: "full_prepay", currency: "USD",
       shopifyHandle: "kerala-roots", amenities: [1, 2, 4, 5, 6, 9, 10],
@@ -203,7 +201,7 @@ async function main() {
       slug: "palm-shala-goa",
       name: "Palm Shala Wellness Goa",
       short: "Beachside abhyanga, shirodhara and sunset yoga near Palolem.",
-      city: "Goa", lat: 15.0106, lng: 74.0233,
+      city: "Goa", state: "Goa", lat: 15.0106, lng: 74.0233,
       mode: "booking_fee", bookingFeeMinor: 500, currency: "USD",
       shopifyHandle: "palm-shala", amenities: [3, 4, 7, 8, 10],
     },
@@ -212,7 +210,7 @@ async function main() {
       slug: "ceylon-veda-colombo",
       name: "Ceylon Veda Sanctuary",
       short: "Urban Ayurvedic day spa with doctor-led treatment plans.",
-      city: "Colombo", lat: 6.9147, lng: 79.8730,
+      city: "Colombo", state: "Western Province", lat: 6.9147, lng: 79.8730,
       mode: "pay_at_spa", currency: "USD",
       shopifyHandle: "ceylon-veda", amenities: [1, 2, 6, 10],
     },
@@ -221,7 +219,7 @@ async function main() {
       slug: "ubud-prana-retreat",
       name: "Ubud Prana Retreat",
       short: "Jungle retreat blending Balinese healing with classical Ayurveda.",
-      city: "Ubud", lat: -8.5194, lng: 115.2633,
+      city: "Ubud", state: "Bali", lat: -8.5194, lng: 115.2633,
       mode: "deposit", depositBps: 3000, currency: "USD",
       shopifyHandle: "ubud-prana", amenities: [3, 4, 5, 7, 8, 9, 10],
     },
@@ -230,7 +228,7 @@ async function main() {
       slug: "red-rock-veda-sedona",
       name: "Red Rock Veda Sedona",
       short: "High-desert Ayurveda studio with marma therapy and sound healing.",
-      city: "Sedona", lat: 34.8656, lng: -111.7637,
+      city: "Sedona", state: "Arizona", lat: 34.8656, lng: -111.7637,
       mode: "full_prepay", currency: "USD",
       shopifyHandle: "red-rock-veda", amenities: [1, 3, 6, 7, 10],
     },
@@ -241,13 +239,15 @@ async function main() {
     const description = `${s.short}\n\n${s.name} follows classical Ayurvedic protocols with personalised dosha assessments, treatments performed by trained therapists, and herbal preparations made from certified organic ingredients. Every guest begins with a consultation so treatments can be tailored to their constitution and health goals.`;
     const id = await insert(
       `INSERT INTO spas
-        (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code, city_id,
+        (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code,
+         country_id, state, city_name, city_id,
          lat, lng, phone, email, website, shopify_collection_handle, payment_mode_id, deposit_bps,
          booking_fee_minor, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,1)`,
       [
         s.vendorId, `AA${String(spaIds.size + 1).padStart(4, "0")}`, s.slug, s.name, s.short, description,
-        `12 Wellness Lane`, "00000", cityIds.get(s.city),
+        `12 Wellness Lane`, "00000",
+        countryIds.get(cityCountryIso.get(s.city) ?? "") ?? null, s.state, s.city, cityIds.get(s.city) ?? null,
         s.lat, s.lng, "+1 555 0100", `hello@${s.slug}.test`, `https://${s.slug}.test`,
         s.shopifyHandle, modeIds.get(s.mode), s.depositBps ?? null,
         s.bookingFeeMinor ?? null, currencyIds.get(s.currency),

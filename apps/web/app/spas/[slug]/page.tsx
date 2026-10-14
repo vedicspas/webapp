@@ -10,8 +10,10 @@ import { BookingWidget } from "@/components/spa/BookingWidget";
 import { ReviewsSection } from "@/components/spa/ReviewsSection";
 import { QASection } from "@/components/spa/QASection";
 import { ShopSection } from "@/components/spa/ShopSection";
-import { WEEKDAYS, money } from "@/lib/format";
+import { WEEKDAYS, formatSpaAddress, formatSpaLocality, money } from "@/lib/format";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
+import { SpaLocationLink, SpaLocationPreview, SpaLocationProvider } from "@/components/spa/SpaLocation";
+import { ShareListing } from "@/components/spa/ShareListing";
 
 // Booking inventory (treatments) must not stay stale after a vendor deletes one.
 export const dynamic = "force-dynamic";
@@ -53,20 +55,34 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
     getQuestions(slug),
     spa.shopifyCollectionHandle ? getSpaProducts(spa.shopifyCollectionHandle) : null,
   ]);
+  const address = formatSpaAddress(spa);
+  const loc =
+    Number.isFinite(Number(spa.lat)) && Number.isFinite(Number(spa.lng))
+      ? { name: spa.name, address, lat: Number(spa.lat), lng: Number(spa.lng) }
+      : null;
 
   return (
+    <SpaLocationProvider loc={loc}>
     <div className="mx-auto max-w-6xl px-4 py-6">
       <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
 
       <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0">
           <p className="text-sm uppercase tracking-wide text-veda-500">
-            {spa.cityName}, {spa.countryName}
+            {formatSpaLocality(spa)}
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-veda-900 sm:text-3xl">{spa.name}</h1>
-          <div className="mt-2 flex flex-wrap items-center gap-4 text-sm">
+          <div className="mt-1 flex items-start justify-between gap-3">
+            <h1 className="min-w-0 text-2xl font-bold text-veda-900 sm:text-3xl">{spa.name}</h1>
+            <ShareListing title={spa.name} text={spa.shortDescription} path={`/spas/${spa.slug}`} />
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <RatingStars rating={spa.ratingAvg} count={spa.ratingCount} size="lg" />
-            <span className="text-foreground/60">{spa.addressLine}</span>
+            {address ? (
+              <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-foreground/60">
+                <span>{address}</span>
+                <SpaLocationLink />
+              </span>
+            ) : null}
           </div>
 
           <p className="mt-5 whitespace-pre-line leading-relaxed text-foreground/85">
@@ -118,6 +134,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
 
           <ReviewsSection slug={spa.slug} initial={reviews} />
           <QASection slug={spa.slug} initial={questions} />
+          <SpaLocationPreview />
         </div>
 
         <aside className="lg:sticky lg:top-20 lg:self-start">
@@ -125,5 +142,6 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
         </aside>
       </div>
     </div>
+    </SpaLocationProvider>
   );
 }

@@ -69,7 +69,10 @@ const spaBodySchema = z.object({
   description: z.string().default(""),
   addressLine: z.string().max(255).default(""),
   postalCode: z.string().max(20).default(""),
-  cityId: z.number(),
+  countryId: z.number().int().positive(),
+  state: z.string().max(100).default(""),
+  cityName: z.string().trim().min(1).max(100),
+  cityId: z.number().int().positive().nullable().optional(),
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
   phone: z.string().max(32).nullable().default(null),
@@ -88,6 +91,14 @@ const spaBodySchema = z.object({
   accessibility: z.string().max(2000).nullable().optional().default(null),
   familyAccommodation: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
 });
+
+function resolveCityId(countryId: number, cityName: string): number | null {
+  const needle = cityName.trim().toLowerCase();
+  const match = staticCache.cities.find(
+    (c) => c.countryId === countryId && c.name.toLowerCase() === needle
+  );
+  return match?.id ?? null;
+}
 
 function slugify(name: string): string {
   return name
@@ -119,12 +130,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       id: number;
       slug: string;
       name: string;
-      city_id: number;
+      city_id: number | null;
+      city_name: string;
       payment_mode_id: number;
       is_published: number;
       clinic_code: string;
     }>(
-      "SELECT id, slug, name, city_id, payment_mode_id, is_published, clinic_code FROM spas WHERE vendor_id = ? ORDER BY name",
+      "SELECT id, slug, name, city_id, city_name, payment_mode_id, is_published, clinic_code FROM spas WHERE vendor_id = ? ORDER BY name",
       [vendor.id]
     );
 
@@ -158,7 +170,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         slug: s.slug,
         name: s.name,
         clinicCode: s.clinic_code,
-        cityName: staticCache.city(s.city_id)?.name ?? "",
+        cityName: s.city_name || staticCache.city(s.city_id ?? 0)?.name || "",
         paymentModeCode: staticCache.paymentMode(s.payment_mode_id)?.code,
         isPublished: Boolean(s.is_published),
         bookingsToday: Number(countBySpa.get(s.id)?.todayCount ?? 0),
@@ -225,6 +237,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const mode = staticCache.paymentModeByCode(body.paymentModeCode)!;
     const currency = staticCache.currencies.find((c) => c.code === body.currencyCode);
     if (!currency) return reply.code(400).send({ error: "Unknown currency" });
+    if (!staticCache.country(body.countryId)) return reply.code(400).send({ error: "Unknown country" });
+    const cityId = resolveCityId(body.countryId, body.cityName);
 
     let slug = slugify(body.name);
     if (await queryOne("SELECT id FROM spas WHERE slug = ?", [slug])) {
@@ -234,13 +248,15 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const clinicCode = await allocateClinicCode();
     const result = await execute(
       `INSERT INTO spas
-        (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code, city_id,
+        (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code,
+         country_id, state, city_name, city_id,
          lat, lng, phone, email, website, shopify_collection_handle, payment_mode_id, deposit_bps,
          booking_fee_minor, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         vendor.id, clinicCode, slug, body.name, body.shortDescription, body.description, body.addressLine,
-        body.postalCode, body.cityId, body.lat, body.lng, body.phone, body.email, body.website,
+        body.postalCode, body.countryId, body.state.trim(), body.cityName.trim(), cityId,
+        body.lat, body.lng, body.phone, body.email, body.website,
         body.shopifyCollectionHandle, mode.id, body.depositBps, body.bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0,
       ]
@@ -264,15 +280,18 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const mode = staticCache.paymentModeByCode(body.paymentModeCode)!;
     const currency = staticCache.currencies.find((c) => c.code === body.currencyCode);
     if (!currency) return reply.code(400).send({ error: "Unknown currency" });
+    if (!staticCache.country(body.countryId)) return reply.code(400).send({ error: "Unknown country" });
+    const cityId = resolveCityId(body.countryId, body.cityName);
 
     await execute(
       `UPDATE spas SET name=?, short_description=?, description=?, address_line=?, postal_code=?,
-         city_id=?, lat=?, lng=?, phone=?, email=?, website=?, shopify_collection_handle=?,
+         country_id=?, state=?, city_name=?, city_id=?, lat=?, lng=?, phone=?, email=?, website=?, shopify_collection_handle=?,
          payment_mode_id=?, deposit_bps=?, booking_fee_minor=?, currency_id=?, is_published=?
        WHERE id = ?`,
       [
         body.name, body.shortDescription, body.description, body.addressLine, body.postalCode,
-        body.cityId, body.lat, body.lng, body.phone, body.email, body.website,
+        body.countryId, body.state.trim(), body.cityName.trim(), cityId,
+        body.lat, body.lng, body.phone, body.email, body.website,
         body.shopifyCollectionHandle, mode.id, body.depositBps, body.bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0, spaId,
       ]
@@ -288,7 +307,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
 
     const spa = await queryOne<Record<string, unknown>>(
       `SELECT id, slug, name, clinic_code AS clinicCode, short_description AS shortDescription, description,
-         address_line AS addressLine, postal_code AS postalCode, city_id AS cityId, lat, lng,
+         address_line AS addressLine, postal_code AS postalCode, country_id AS countryId, state,
+         city_name AS cityName, city_id AS cityId, lat, lng,
          phone, email, website, shopify_collection_handle AS shopifyCollectionHandle,
          payment_mode_id AS paymentModeId, deposit_bps AS depositBps,
          booking_fee_minor AS bookingFeeMinor, currency_id AS currencyId, is_published AS isPublished
@@ -343,6 +363,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const stay = await loadSpaStay(spaId);
     return {
       ...spa,
+      countryId: spa.countryId == null ? null : Number(spa.countryId),
+      cityId: spa.cityId == null ? null : Number(spa.cityId),
+      state: String(spa.state ?? ""),
+      cityName:
+        String(spa.cityName ?? "").trim() ||
+        staticCache.city(Number(spa.cityId) || 0)?.name ||
+        "",
       paymentModeCode: staticCache.paymentMode(Number(spa.paymentModeId))?.code,
       currencyCode: staticCache.currency(Number(spa.currencyId))?.code,
       isPublished: Boolean(spa.isPublished),
@@ -649,15 +676,21 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
 
     let spa: { id: number; name: string; cityName: string; clinicCode: string } | null = null;
     if (params.spaId) {
-      const row = await queryOne<{ id: number; name: string; city_id: number; clinic_code: string }>(
-        "SELECT id, name, city_id, clinic_code FROM spas WHERE id = ? AND vendor_id = ?",
+      const row = await queryOne<{
+        id: number;
+        name: string;
+        city_id: number | null;
+        city_name: string;
+        clinic_code: string;
+      }>(
+        "SELECT id, name, city_id, city_name, clinic_code FROM spas WHERE id = ? AND vendor_id = ?",
         [params.spaId, vendor.id]
       );
       if (!row) return reply.code(404).send({ error: "Clinic not found" });
       spa = {
         id: row.id,
         name: row.name,
-        cityName: staticCache.city(row.city_id)?.name ?? "",
+        cityName: row.city_name || staticCache.city(row.city_id ?? 0)?.name || "",
         clinicCode: row.clinic_code,
       };
     }

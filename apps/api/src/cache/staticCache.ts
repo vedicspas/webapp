@@ -33,6 +33,7 @@ class StaticCache {
   siteSettings: SiteSettings = { contactEmail: null, contactPhone: null };
 
   private byId = {
+    countries: new Map<number, Country>(),
     cities: new Map<number, City>(),
     currencies: new Map<number, Currency>(),
     paymentModes: new Map<number, PaymentMode>(),
@@ -88,6 +89,7 @@ class StaticCache {
     this.accommodationTypes = accommodationTypes;
     await this.reloadSiteSettings();
 
+    this.byId.countries = new Map(countries.map((c) => [c.id, c]));
     this.byId.cities = new Map(cities.map((c) => [c.id, c]));
     this.byId.currencies = new Map(currencies.map((c) => [c.id, c]));
     this.byId.paymentModes = new Map(modes.map((m) => [m.id, m]));
@@ -108,7 +110,7 @@ class StaticCache {
   }
 
   country(id: number): Country | undefined {
-    return this.countries.find((c) => c.id === id);
+    return this.byId.countries.get(id);
   }
 
   currency(id: number): Currency | undefined {

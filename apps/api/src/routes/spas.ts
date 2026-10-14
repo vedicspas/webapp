@@ -77,16 +77,25 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       const clauses = [
         "s.name LIKE ?",
         "s.address_line LIKE ?",
+        "s.city_name LIKE ?",
+        "s.state LIKE ?",
         `EXISTS (
            SELECT 1 FROM treatments tr
            WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.name LIKE ?
          )`,
       ];
-      args.push(qLike, qLike, qLike);
+      args.push(qLike, qLike, qLike, qLike, qLike);
 
       if (matchingCityIds.length > 0) {
         clauses.push(`s.city_id IN (${matchingCityIds.map(() => "?").join(",")})`);
         args.push(...matchingCityIds);
+      }
+      const matchingCountryIds = staticCache.countries
+        .filter((c) => c.name.toLowerCase().includes(qLower))
+        .map((c) => c.id);
+      if (matchingCountryIds.length > 0) {
+        clauses.push(`s.country_id IN (${matchingCountryIds.map(() => "?").join(",")})`);
+        args.push(...matchingCountryIds);
       }
       if (matchingCategoryIds.length > 0) {
         clauses.push(
@@ -101,16 +110,18 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       where.push(`(${clauses.join(" OR ")})`);
     }
     if (params.cityId) {
-      where.push("s.city_id = ?");
-      args.push(params.cityId);
+      const city = staticCache.city(params.cityId);
+      if (city) {
+        where.push("(s.city_id = ? OR (s.city_name = ? AND (s.country_id = ? OR s.country_id IS NULL)))");
+        args.push(params.cityId, city.name, city.countryId);
+      } else {
+        where.push("s.city_id = ?");
+        args.push(params.cityId);
+      }
     }
     if (params.countryId) {
-      const cityIds = staticCache.cities
-        .filter((c) => c.countryId === params.countryId)
-        .map((c) => c.id);
-      if (cityIds.length === 0) return { items: [], page: 1, pageSize: PAGE_SIZE, total: 0 };
-      where.push(`s.city_id IN (${cityIds.map(() => "?").join(",")})`);
-      args.push(...cityIds);
+      where.push("s.country_id = ?");
+      args.push(params.countryId);
     }
     if (params.categoryId) {
       where.push(
@@ -220,8 +231,6 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     const row = await queryOne<
       SpaSummaryRow & {
         description: string;
-        addressLine: string;
-        postalCode: string;
         phone: string | null;
         email: string | null;
         website: string | null;
@@ -233,7 +242,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       `${SPA_SUMMARY_SELECT.replace(
         "t.min_price AS priceFromMinor",
         `t.min_price AS priceFromMinor,
-         s.description, s.address_line AS addressLine, s.postal_code AS postalCode,
+         s.description,
          s.phone, s.email, s.website, s.shopify_collection_handle AS shopifyCollectionHandle,
          s.deposit_bps AS depositBps, s.booking_fee_minor AS bookingFeeMinor`
       )} WHERE s.slug = ? AND s.is_published = 1`,
@@ -264,8 +273,6 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     const detail: SpaDetail = {
       ...toSpaSummary(row, amenities.get(row.id) ?? []),
       description: row.description,
-      addressLine: row.addressLine,
-      postalCode: row.postalCode,
       phone: row.phone,
       email: row.email,
       website: row.website,

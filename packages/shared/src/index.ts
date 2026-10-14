@@ -141,9 +141,12 @@ export interface SpaSummary {
   slug: string;
   name: string;
   shortDescription: string;
-  cityId: number;
+  cityId: number | null;
   cityName: string;
+  state: string;
   countryName: string;
+  addressLine: string;
+  postalCode: string;
   lat: number;
   lng: number;
   coverPhotoUrl: string | null;
@@ -157,8 +160,6 @@ export interface SpaSummary {
 
 export interface SpaDetail extends SpaSummary {
   description: string;
-  addressLine: string;
-  postalCode: string;
   phone: string | null;
   email: string | null;
   website: string | null;

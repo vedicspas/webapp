@@ -180,13 +180,14 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       slug: string;
       name: string;
       clinic_code: string;
-      city_id: number;
+      city_id: number | null;
+      city_name: string;
       is_published: number;
       vendor_id: number;
       business_name: string;
       vendor_status: string;
     }>(
-      `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.is_published,
+      `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published,
          v.id AS vendor_id, v.business_name, v.status AS vendor_status
        FROM spas s JOIN vendors v ON v.id = s.vendor_id
        WHERE ${whereSql}
@@ -200,7 +201,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         slug: r.slug,
         name: r.name,
         clinicCode: r.clinic_code,
-        cityName: staticCache.city(r.city_id)?.name ?? "",
+        cityName: r.city_name || staticCache.city(r.city_id ?? 0)?.name || "",
         isPublished: Boolean(r.is_published),
         vendorId: r.vendor_id,
         vendorName: r.business_name,
