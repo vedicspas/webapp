@@ -7,6 +7,7 @@ import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 import { platformFeeFor, stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
+import { notifyBooking } from "../lib/notify.js";
 
 const SLOT_STEP_MINUTES = 30;
 
@@ -320,6 +321,7 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const row = (await queryOne<BookingRow>(`${BOOKING_SELECT} WHERE b.id = ?`, [bookingId]))!;
+    await notifyBooking(bookingId);
     const response: CreateBookingResponse = {
       booking: toBooking(row),
       stripeClientSecret,

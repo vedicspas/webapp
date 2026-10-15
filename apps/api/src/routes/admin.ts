@@ -4,6 +4,8 @@ import { execute, query, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 import { assertCanModerate } from "../lib/reviewValidation.js";
+import { EMAIL_TYPE_LABELS, type EmailType } from "../lib/mailer.js";
+import { notifySpaOwnerForPublish } from "../lib/notify.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -228,11 +230,18 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         return reply.code(409).send({ error: "Vendor is not approved" });
       }
     }
+    const before = await queryOne<{ is_published: number }>(
+      "SELECT is_published FROM spas WHERE id = ?",
+      [spaId]
+    );
     const result = await execute("UPDATE spas SET is_published = ? WHERE id = ?", [
       body.isPublished ? 1 : 0,
       spaId,
     ]);
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Spa not found" });
+    if (body.isPublished && !before?.is_published) {
+      await notifySpaOwnerForPublish(spaId, true);
+    }
     return { ok: true };
   });
 
@@ -505,6 +514,101 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const id = Number((request.params as { id: string }).id);
     const result = await execute("DELETE FROM contact_messages WHERE id = ?", [id]);
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Message not found" });
+    return { ok: true };
+  });
+
+  app.get("/admin/emails", async (request) => {
+    const q = z
+      .object({
+        toEmail: z.string().max(255).optional(),
+        from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        page: z.string().optional(),
+        pageSize: z.string().optional(),
+      })
+      .parse(request.query);
+    const { page, pageSize, offset } = pagination(q);
+    const where = ["1=1"];
+    const values: unknown[] = [];
+    if (q.toEmail?.trim()) {
+      where.push("to_email LIKE ?");
+      values.push(`%${q.toEmail.trim().toLowerCase()}%`);
+    }
+    if (q.from) {
+      where.push("DATE(sent_at) >= ?");
+      values.push(q.from);
+    }
+    if (q.to) {
+      where.push("DATE(sent_at) <= ?");
+      values.push(q.to);
+    }
+    const whereSql = where.join(" AND ");
+    const totalRow = await queryOne<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM email_log WHERE ${whereSql}`,
+      values
+    );
+    const rows = await query<{
+      id: number;
+      sentAt: Date | string;
+      emailType: string;
+      toEmail: string;
+      fromEmail: string;
+      subject: string;
+      status: "sent" | "skipped" | "failed";
+      error: string | null;
+    }>(
+      `SELECT id, sent_at AS sentAt, email_type AS emailType, to_email AS toEmail,
+         from_email AS fromEmail, subject, status, error
+       FROM email_log
+       WHERE ${whereSql}
+       ORDER BY sent_at DESC, id DESC
+       LIMIT ${pageSize} OFFSET ${offset}`,
+      values
+    );
+    return {
+      items: rows.map((r) => ({
+        ...r,
+        sentAt: r.sentAt instanceof Date ? r.sentAt.toISOString() : String(r.sentAt),
+        typeLabel: EMAIL_TYPE_LABELS[r.emailType as EmailType] ?? r.emailType,
+      })),
+      page,
+      pageSize,
+      total: Number(totalRow?.n ?? 0),
+    };
+  });
+
+  app.get("/admin/emails/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const row = await queryOne<{
+      id: number;
+      sentAt: Date | string;
+      emailType: string;
+      toEmail: string;
+      fromEmail: string;
+      subject: string;
+      htmlBody: string;
+      textBody: string;
+      status: "sent" | "skipped" | "failed";
+      error: string | null;
+    }>(
+      `SELECT id, sent_at AS sentAt, email_type AS emailType, to_email AS toEmail,
+         from_email AS fromEmail, subject, html_body AS htmlBody, text_body AS textBody,
+         status, error
+       FROM email_log WHERE id = ?`,
+      [id]
+    );
+    if (!row) return reply.code(404).send({ error: "Email not found" });
+    return {
+      ...row,
+      sentAt: row.sentAt instanceof Date ? row.sentAt.toISOString() : String(row.sentAt),
+      typeLabel: EMAIL_TYPE_LABELS[row.emailType as EmailType] ?? row.emailType,
+    };
+  });
+
+  app.delete("/admin/emails/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const result = await execute("DELETE FROM email_log WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Email not found" });
     return { ok: true };
   });
 }

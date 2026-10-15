@@ -19,6 +19,7 @@ import { vendorRoutes } from "./routes/vendor.js";
 import { adminRoutes } from "./routes/admin.js";
 import { contactRoutes } from "./routes/contact.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { emailPublicRoutes } from "./routes/emailPublic.js";
 
 async function main() {
   const app = Fastify({ logger: true, bodyLimit: 10 * 1024 * 1024 });
@@ -85,6 +86,7 @@ async function main() {
   await app.register(vendorRoutes, { prefix: "" });
   await app.register(adminRoutes);
   await app.register(contactRoutes);
+  await app.register(emailPublicRoutes);
   await app.register(webhookRoutes);
 
   // Set HOST=:: on platforms with IPv6 private networking (e.g. Railway).

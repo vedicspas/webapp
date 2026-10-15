@@ -212,6 +212,33 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
       FOREIGN KEY (country_id) REFERENCES countries(id)`
   );
 
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS email_log (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      email_type VARCHAR(64) NOT NULL,
+      to_email VARCHAR(255) NOT NULL,
+      from_email VARCHAR(255) NOT NULL DEFAULT '',
+      subject VARCHAR(255) NOT NULL,
+      html_body MEDIUMTEXT NOT NULL,
+      text_body TEXT NOT NULL,
+      status ENUM('sent','skipped','failed') NOT NULL,
+      error VARCHAR(500) NULL,
+      KEY idx_email_log_sent (sent_at),
+      KEY idx_email_log_to (to_email),
+      KEY idx_email_log_type (email_type),
+      KEY idx_email_log_status (status)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS email_unsubscribes (
+      email VARCHAR(255) NOT NULL PRIMARY KEY,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+
   console.log("Schema patches applied.");
 }
 

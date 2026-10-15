@@ -3,9 +3,13 @@
 #
 #   docker compose up -d --build
 #
+# Project name is pinned so this folder does not collide with the existing
+# vedic-spas-* containers (they were created as project "webapp").
 # Migration runs automatically before the API starts.
 # For local development you can still run only the database in Docker
 # (docker compose up -d mariadb) and use `npm run dev` on the host.
+
+name: webapp
 
 services:
   mariadb:
@@ -86,6 +90,11 @@ services:
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PLATFORM_FEE_BPS: ${PLATFORM_FEE_BPS:-750}
       DEFAULT_BOOKING_FEE_MINOR: ${DEFAULT_BOOKING_FEE_MINOR:-500}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      SMTP_FROM: ${SMTP_FROM:-}
       UPLOAD_DIR: /data/uploads
     ports:
       - "4100:4100"

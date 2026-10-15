@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import type { Paginated, SpaSummary } from "@vedic/shared";
-import { useSearchStore } from "@/stores/searchStore";
+import { NEAR_ME_RADIUS_KM, useSearchStore } from "@/stores/searchStore";
 import { useMetaStore } from "@/stores/metaStore";
 import { SpaCard } from "./SpaCard";
 import { SearchFilters } from "./SearchFilters";
@@ -93,7 +93,9 @@ export function SearchResults() {
             </div>
           ) : store.results.length === 0 ? (
             <p className="py-16 text-center text-foreground/60">
-              No spas match these filters yet. Try widening your search.
+              {store.nearMe
+                ? `No spas within ${NEAR_ME_RADIUS_KM} km of you. Click Near me again to show all listings.`
+                : "No spas match these filters yet. Try widening your search."}
             </p>
           ) : (
             <div className="grid gap-5 pt-4 sm:grid-cols-2 lg:grid-cols-3">

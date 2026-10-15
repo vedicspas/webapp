@@ -1,0 +1,227 @@
+AYURVEDAADVISOR.COM — EMAIL COPIES
+
+Website name: AyurvedaAdvisor.com
+Replace {{placeholders}} with the corresponding application values.
+For plain-text emails, include the URL below the action label.
+
+======================================================================
+
+1. EMAIL PURPOSE: Welcome after successful clinic owner registration
+Target Recipient: Newly registered clinic owner / vendor
+
+Subject Line : Welcome to AyurvedaAdvisor.com!
+
+Email copy:
+
+Hi {{FirstName}},
+
+Welcome to AyurvedaAdvisor.com! Your account is ready, and you can now add your clinics and introduce your services to people seeking Ayurvedic care.
+
+Add Your Clinic:
+{{AddClinicUrl}}
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+2. EMAIL PURPOSE: Welcome after successful user registration
+Target Recipient: Newly registered user
+
+Subject Line : Welcome to AyurvedaAdvisor.com!
+
+Email copy:
+
+Hi {{FirstName}},
+
+Welcome to AyurvedaAdvisor.com! Discover Ayurveda clinics, explore treatments, read reviews, and book an appointment.
+
+Explore Clinics:
+{{ExploreClinicsUrl}}
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+3. EMAIL PURPOSE: Confirm successful password reset
+Target Recipient: User whose password has been changed
+
+Subject Line : Your password has been updated
+
+Email copy:
+
+Hi {{FirstName}},
+
+Your AyurvedaAdvisor.com password has been changed successfully.
+
+If you didn’t make this change, please contact us immediately at {{SupportEmail}}.
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+4. EMAIL PURPOSE: Provide a password reset link
+Target Recipient: User who requested a password reset
+
+Subject Line : Reset your AyurvedaAdvisor.com password
+
+Email copy:
+
+Hi {{FirstName}},
+
+We received a request to reset your password.
+
+Reset Password:
+{{ResetPasswordUrl}}
+
+This link expires in {{ExpiryMinutes}} minutes. If you didn’t request this, you can ignore this email. Your password will remain unchanged.
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+5. EMAIL PURPOSE: Confirm clinic submission awaiting admin approval
+Target Recipient: Clinic owner who submitted a new clinic
+
+Subject Line : Clinic submitted: {{ClinicName}}
+
+Email copy:
+
+Hi {{FirstName}},
+
+Your clinic has been submitted successfully:
+
+{{ClinicName}}
+{{ClinicAddress}}
+
+Your listing is awaiting admin approval and will appear on AyurvedaAdvisor.com once approved.
+
+View Your Submission:
+{{ClinicDashboardUrl}}
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+6. EMAIL PURPOSE: Confirm an appointment booking
+Target Recipient: User whose appointment booking is confirmed
+
+Subject Line : Appointment confirmation — {{ClinicName}}
+
+Email copy:
+
+Hi {{FirstName}},
+
+Here are your appointment details:
+
+Clinic: {{ClinicName}}
+Address: {{ClinicAddress}}
+Appointment date: {{AppointmentDate}}
+Appointment time: {{AppointmentTimeAndTimeZone}}
+
+Treatments and estimated costs:
+{{TreatmentName}} — {{Currency}}{{ApproxCost}}
+{{RepeatForEachTreatment}}
+
+Booking reference: {{BookingReference}}
+Booked on: {{BookingDate}}
+
+Costs are estimates. The clinic will confirm the final treatment plan and charges.
+
+View Appointment:
+{{AppointmentUrl}}
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+Implementation note (not part of the email): Repeat the treatment-and-cost
+line for each selected treatment; do not display {{RepeatForEachTreatment}}.
+If clinic confirmation is pending, use the subject “Appointment request
+received — {{ClinicName}}” and replace the opening sentence with “We’ve
+received your appointment request. The clinic still needs to confirm
+availability. Here are your requested appointment details:”.
+
+======================================================================
+
+7. EMAIL PURPOSE: Acknowledge a submitted review
+Target Recipient: User who submitted a clinic review
+
+Subject Line : Thank you for reviewing {{ClinicName}}
+
+Email copy:
+
+Hi {{FirstName}},
+
+Thank you for sharing your experience with {{ClinicName}}. Your review has been submitted successfully and helps others make informed choices.
+
+View Your Review:
+{{ReviewUrl}}
+
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+8. EMAIL PURPOSE: Notify about a reply to a review or comment
+Target Recipient: Author of the review or comment receiving a reply
+
+Subject Line : You have a new reply on AyurvedaAdvisor.com
+
+Email copy:
+
+Hi {{FirstName}},
+
+{{ReplyAuthorName}} replied to your {{ReviewOrComment}} on the listing for {{ClinicName}}.
+
+View Reply:
+{{ReplyUrl}}
+
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+9. EMAIL PURPOSE: Notify about a new question on a clinic listing
+Target Recipient: Owner of the clinic receiving the question
+
+Subject Line : New question about {{ClinicName}}
+
+Email copy:
+
+Hi {{FirstName}},
+
+{{AskerName}} asked a question about {{ClinicName}}:
+
+“{{QuestionText}}”
+
+Visit your clinic page to answer.
+
+Answer Question:
+{{ClinicQuestionUrl}}
+
+The AyurvedaAdvisor.com Team
+
+======================================================================
+
+10. EMAIL PURPOSE: Notify that a clinic listing is approved and published
+Target Recipient: Owner of the approved clinic listing
+
+Subject Line : Your clinic is now live — {{ClinicName}}
+
+Email copy:
+
+Hi {{FirstName}},
+
+Your listing for {{ClinicName}} has been approved and is now live on AyurvedaAdvisor.com!
+
+Visitors can now explore your clinic and its services.
+
+View Your Clinic:
+{{ClinicPageUrl}}
+
+Warm regards,
+The AyurvedaAdvisor.com Team
+
+======================================================================

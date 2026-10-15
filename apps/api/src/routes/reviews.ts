@@ -20,6 +20,7 @@ import {
 import { summarizeReviews, type ReviewStatRow } from "../lib/reviewStats.js";
 import { saveReviewPhotos, safeReviewPhotoName } from "../lib/reviewPhotos.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
+import { notifyReplyOnReview, notifyReviewReceived } from "../lib/notify.js";
 
 interface ReviewRow {
   id: number;
@@ -313,6 +314,7 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
 
     const created = await loadReview(reviewId);
     if (!created) return reply.code(500).send({ error: "Failed to load the created review" });
+    await notifyReviewReceived(reviewId);
     return reply.code(201).send(created);
   });
 
@@ -338,6 +340,7 @@ export async function reviewRoutes(app: FastifyInstance): Promise<void> {
     );
     const updated = await loadReview(reviewId);
     if (!updated) return reply.code(404).send({ error: "Review not found" });
+    await notifyReplyOnReview(reviewId, request.user.id);
     return reply.code(201).send(updated);
   });
 }

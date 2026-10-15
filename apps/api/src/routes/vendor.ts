@@ -12,6 +12,7 @@ import { issueSessionForUserId } from "./auth.js";
 import { ensureVendorAccount } from "../lib/vendorAccount.js";
 import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { allocateClinicCode, parseBookingRefInput } from "../lib/bookingRefs.js";
+import { loadSpaOwner, notifyClinicSubmitted, notifySpaOwnerForPublish, notifyWelcomeVendor } from "../lib/notify.js";
 
 function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
   for (const name of names) {
@@ -119,7 +120,9 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     if (existing) return reply.code(409).send({ error: "Already a vendor" });
 
     await ensureVendorAccount(request.user!.id, body.businessName);
-    return reply.code(201).send(await issueSessionForUserId(request.user!.id));
+    const session = await issueSessionForUserId(request.user!.id);
+    await notifyWelcomeVendor(session.user.email, session.user.name);
+    return reply.code(201).send(session);
   });
 
   app.get("/vendor/me", async (request, reply) => {
@@ -262,6 +265,20 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     await saveSpaStay(result.insertId, body);
+    const owner = await loadSpaOwner(result.insertId);
+    if (owner) {
+      if (body.isPublished) {
+        await notifySpaOwnerForPublish(result.insertId, true);
+      } else {
+        await notifyClinicSubmitted({
+          to: owner.email,
+          name: owner.name,
+          clinicName: owner.spaName,
+          clinicAddress: owner.address,
+          spaId: result.insertId,
+        });
+      }
+    }
     return reply.code(201).send({ id: result.insertId, slug, clinicCode });
   });
 
@@ -282,6 +299,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     if (!currency) return reply.code(400).send({ error: "Unknown currency" });
     if (!staticCache.country(body.countryId)) return reply.code(400).send({ error: "Unknown country" });
     const cityId = resolveCityId(body.countryId, body.cityName);
+    const before = await queryOne<{ is_published: number }>("SELECT is_published FROM spas WHERE id = ?", [spaId]);
 
     await execute(
       `UPDATE spas SET name=?, short_description=?, description=?, address_line=?, postal_code=?,
@@ -297,6 +315,9 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     await saveSpaStay(spaId, body);
+    if (body.isPublished && !before?.is_published) {
+      await notifySpaOwnerForPublish(spaId, true);
+    }
     return { ok: true };
   });
 

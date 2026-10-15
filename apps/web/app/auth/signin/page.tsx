@@ -82,6 +82,11 @@ function SignInForm() {
         >
           {busy ? "Signing in\u2026" : "Sign in"}
         </button>
+        <p className="text-right text-sm">
+          <Link href="/auth/forgot" className="text-veda-600 hover:underline">
+            Forgot password?
+          </Link>
+        </p>
       </form>
 
       <button

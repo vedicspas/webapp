@@ -28,6 +28,8 @@ export interface SearchState {
   queryString: () => string;
 }
 
+export const NEAR_ME_RADIUS_KM = 200;
+
 const initial = {
   q: "",
   cityId: null,
@@ -74,7 +76,7 @@ export const useSearchStore = create<SearchState>((set, get) => ({
     if (s.nearMe) {
       params.set("lat", String(s.nearMe.lat));
       params.set("lng", String(s.nearMe.lng));
-      params.set("radiusKm", "200");
+      params.set("radiusKm", String(NEAR_ME_RADIUS_KM));
     }
     params.set("sort", s.nearMe && s.sort === "rating" ? "distance" : s.sort);
     params.set("page", String(s.page));

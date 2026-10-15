@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { PaymentModeCode } from "@vedic/shared";
-import { useSearchStore } from "@/stores/searchStore";
+import { NEAR_ME_RADIUS_KM, useSearchStore } from "@/stores/searchStore";
 import { useMetaStore } from "@/stores/metaStore";
 import { PAYMENT_MODE_LABELS } from "@/lib/format";
 
@@ -20,6 +20,15 @@ export function SearchFilters() {
     (store.paymentMode ? 1 : 0);
 
   function nearMe() {
+    if (locating) return;
+    if (store.nearMe) {
+      store.set({
+        nearMe: null,
+        page: 1,
+        ...(store.sort === "distance" ? { sort: "rating" as const } : {}),
+      });
+      return;
+    }
     if (!navigator.geolocation) return;
     setLocating(true);
     navigator.geolocation.getCurrentPosition(
@@ -46,14 +55,21 @@ export function SearchFilters() {
           className="min-w-0 flex-1 rounded-full border border-veda-200 px-4 py-2 text-sm outline-none focus:border-veda-500"
         />
         <button
+          type="button"
           onClick={nearMe}
+          aria-pressed={Boolean(store.nearMe)}
+          title={
+            store.nearMe
+              ? `Showing spas within ${NEAR_ME_RADIUS_KM} km. Click to clear.`
+              : `Show spas within ${NEAR_ME_RADIUS_KM} km of you`
+          }
           className={`rounded-full px-4 py-2 text-sm ${
             store.nearMe
               ? "bg-veda-600 text-white"
               : "border border-veda-200 text-veda-800 hover:bg-veda-50"
           }`}
         >
-          {locating ? "Locating\u2026" : store.nearMe ? "Near me \u2713" : "Near me"}
+          {locating ? "Locating\u2026" : store.nearMe ? `Near me \u2713` : "Near me"}
         </button>
         <button
           onClick={() => setOpen((v) => !v)}

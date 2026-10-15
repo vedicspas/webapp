@@ -3,6 +3,7 @@ import { execute, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
+import { notifyBooking } from "../lib/notify.js";
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   // Stripe requires the raw request body for signature verification.
@@ -52,6 +53,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
                 "UPDATE bookings SET status_id = ?, paid_minor = paid_minor + ? WHERE id = ?",
                 [confirmed, intent.amount_received ?? 0, booking.id]
               );
+              await notifyBooking(booking.id);
             }
           }
         }

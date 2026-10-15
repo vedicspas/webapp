@@ -1,4 +1,4 @@
-import nodemailer from "nodemailer";
+import { firstName, sendTransactional } from "./mailer.js";
 
 /**
  * Sends the contact-form notice to the Site Settings inbox.
@@ -12,33 +12,17 @@ export async function sendContactNotification(opts: {
   subject: string;
   message: string;
 }): Promise<"sent" | "skipped"> {
-  const host = process.env.SMTP_HOST?.trim();
-  if (!host) return "skipped";
-
-  const port = Number(process.env.SMTP_PORT ?? "587");
-  const user = process.env.SMTP_USER?.trim();
-  const pass = process.env.SMTP_PASS;
-  const from = process.env.SMTP_FROM?.trim() || user || opts.to;
-
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: user && pass ? { user, pass } : undefined,
-  });
-
-  await transporter.sendMail({
-    from,
+  const result = await sendTransactional({
+    type: "contact_notification",
     to: opts.to,
-    replyTo: `"${opts.fromName.replace(/"/g, "")}" <${opts.fromEmail}>`,
     subject: `[AyurvedaAdvisor.com] ${opts.subject}`,
-    text: [
+    firstName: firstName(opts.to.split("@")[0], opts.to),
+    paragraphs: [
       `Name: ${opts.fromName}`,
       `Email: ${opts.fromEmail}`,
       `Phone: ${opts.phone}`,
-      "",
       opts.message,
-    ].join("\n"),
+    ],
   });
-  return "sent";
+  return result === "sent" ? "sent" : "skipped";
 }

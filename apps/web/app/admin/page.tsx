@@ -418,9 +418,14 @@ export default function AdminPage() {
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-bold text-veda-900">Admin dashboard</h1>
-        <Link href="/admin/settings" className="text-sm text-veda-700 underline hover:text-veda-900">
-          Site settings
-        </Link>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <Link href="/admin/emails" className="text-veda-700 underline hover:text-veda-900">
+            Emails
+          </Link>
+          <Link href="/admin/settings" className="text-veda-700 underline hover:text-veda-900">
+            Site settings
+          </Link>
+        </div>
       </div>
       {error ? <p className="mt-3 text-sm text-red-600">{error}</p> : null}
 

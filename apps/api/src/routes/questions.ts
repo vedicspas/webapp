@@ -4,6 +4,7 @@ import type { Answer, Question } from "@vedic/shared";
 import { execute, query, queryOne } from "../db/pool.js";
 import { requireAuth } from "../plugins/auth.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
+import { notifyClinicQuestion, notifyReplyOnQuestion } from "../lib/notify.js";
 
 interface QuestionRow {
   id: number;
@@ -92,6 +93,7 @@ export async function questionRoutes(app: FastifyInstance): Promise<void> {
       request.user!.id,
       body.body,
     ]);
+    await notifyClinicQuestion(result.insertId);
     return reply.code(201).send({ id: result.insertId });
   });
 
@@ -112,6 +114,7 @@ export async function questionRoutes(app: FastifyInstance): Promise<void> {
       "INSERT INTO answers (question_id, user_id, is_vendor, body) VALUES (?,?,?,?)",
       [questionId, request.user!.id, isVendor ? 1 : 0, body.body]
     );
+    await notifyReplyOnQuestion(questionId, request.user!.id);
     return reply.code(201).send({ id: result.insertId });
   });
 }

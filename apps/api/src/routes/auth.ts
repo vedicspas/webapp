@@ -7,6 +7,8 @@ import { staticCache } from "../cache/staticCache.js";
 import { signApiToken } from "../plugins/auth.js";
 import { ensureVendorAccount } from "../lib/vendorAccount.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
+import { notifyPasswordReset, notifyPasswordUpdated, notifyWelcomeUser, notifyWelcomeVendor } from "../lib/notify.js";
+import { readEmailToken, signEmailToken, siteUrl } from "../lib/mailer.js";
 
 interface UserRow {
   id: number;
@@ -77,6 +79,8 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!row) {
       return reply.code(500).send({ error: "Failed to load the created account" });
     }
+    if (asVendor) await notifyWelcomeVendor(row.email, row.name);
+    else await notifyWelcomeUser(row.email, row.name);
     return { ...(await sessionPayload(row)), created: true };
   });
 
@@ -115,10 +119,38 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       );
       if (asVendor) await ensureVendorAccount(result.insertId, body.name);
       row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [result.insertId]);
+      if (row) {
+        if (asVendor) await notifyWelcomeVendor(row.email, row.name);
+        else await notifyWelcomeUser(row.email, row.name);
+      }
     }
     if (!row) {
       return reply.code(500).send({ error: "Failed to load the created account" });
     }
     return { ...(await sessionPayload(row)), created };
+  });
+
+  app.post("/auth/forgot-password", async (request) => {
+    const body = z.object({ email: z.string().email() }).parse(request.body);
+    const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [body.email]);
+    if (row?.password_hash) {
+      const token = await signEmailToken("pwd-reset", row.email, "30m");
+      await notifyPasswordReset(row.email, row.name, siteUrl(`/auth/reset?token=${encodeURIComponent(token)}`));
+    }
+    return { ok: true };
+  });
+
+  app.post("/auth/reset-password", async (request, reply) => {
+    const body = z
+      .object({ token: z.string().min(1), password: z.string().min(8) })
+      .parse(request.body);
+    const email = await readEmailToken(body.token, "pwd-reset");
+    if (!email) return reply.code(400).send({ error: "This reset link is invalid or expired." });
+    const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [email]);
+    if (!row) return reply.code(400).send({ error: "This reset link is invalid or expired." });
+    const hash = await bcrypt.hash(body.password, 10);
+    await execute("UPDATE users SET password_hash = ? WHERE id = ?", [hash, row.id]);
+    await notifyPasswordUpdated(row.email, row.name);
+    return { ok: true };
   });
 }
