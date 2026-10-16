@@ -133,7 +133,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/auth/forgot-password", async (request) => {
     const body = z.object({ email: z.string().email() }).parse(request.body);
     const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [body.email]);
-    if (row?.password_hash) {
+    if (row) {
       const token = await signEmailToken("pwd-reset", row.email, "30m");
       await notifyPasswordReset(row.email, row.name, siteUrl(`/auth/reset?token=${encodeURIComponent(token)}`));
     }
