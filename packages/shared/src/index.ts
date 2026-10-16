@@ -172,7 +172,8 @@ export interface SpaDetail extends SpaSummary {
   languages: NamedLookup[];
   dietaryOptions: NamedLookup[];
   airportPickup: OnRequestFlag | null;
-  accommodationType: NamedLookup | null;
+  accommodationTypes: NamedLookup[];
+  accommodationOther: string | null;
   accessibility: string | null;
   familyAccommodation: OnRequestFlag | null;
 }

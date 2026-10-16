@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -19,9 +19,15 @@ import {
 import { shortDate } from "@/lib/format";
 import { RatingControl, RatingDisplay, RatingStars } from "@/components/RatingStars";
 import { UserAvatar } from "@/components/UserAvatar";
+import { ReviewAuthLightbox } from "@/components/spa/ReviewAuthLightbox";
+import { easeScrollTo } from "@/lib/smoothScroll";
 import { toast } from "@/stores/toastStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
+
+function pendingReviewKey(slug: string) {
+  return `vedic-pending-review:${slug}`;
+}
 
 function monthLabel(yyyyMm: string | null): string | null {
   if (!yyyyMm) return null;
@@ -59,16 +65,18 @@ function Distribution({ summary }: { summary: ReviewSummary }) {
 
 function ReviewForm({
   slug,
-  token,
   onCreated,
   onCancel,
 }: {
   slug: string;
-  token: string;
   onCreated: (review: Review) => void;
   onCancel: () => void;
 }) {
+  const { data: session, update } = useSession();
   const overallId = useId();
+  const pendingBody = useRef<FormData | null>(null);
+  const pendingPayload = useRef<unknown>(null);
+  const [authOpen, setAuthOpen] = useState(false);
   const [rating, setRating] = useState<number | null>(null);
   const [aspects, setAspects] = useState(emptyAspectScores());
   const [na, setNa] = useState<Record<ReviewAspectId, boolean>>(
@@ -120,23 +128,39 @@ function ReviewForm({
         return;
       }
     }
+    const payload = {
+      rating,
+      title,
+      body,
+      recommends,
+      confirmedGenuine: true,
+      visitedMonth: visitedMonth ? Number(visitedMonth) : undefined,
+      visitedYear: visitedYear ? Number(visitedYear) : undefined,
+      aspects: Object.fromEntries(
+        REVIEW_ASPECTS.map((a) => [a.id, na[a.id] ? null : aspects[a.id]])
+      ),
+    };
+    const fd = new FormData();
+    fd.append("payload", JSON.stringify(payload));
+    for (const file of photos) fd.append("photos", file);
+
+    const token = session?.apiToken;
+    if (!token) {
+      pendingBody.current = fd;
+      pendingPayload.current = payload;
+      setAuthOpen(true);
+      return;
+    }
+    try {
+      await postReview(token, fd);
+    } catch {
+      /* error already shown on the form */
+    }
+  }
+
+  async function postReview(token: string, fd: FormData) {
     setSubmitting(true);
     try {
-      const payload = {
-        rating,
-        title,
-        body,
-        recommends,
-        confirmedGenuine: true,
-        visitedMonth: visitedMonth ? Number(visitedMonth) : undefined,
-        visitedYear: visitedYear ? Number(visitedYear) : undefined,
-        aspects: Object.fromEntries(
-          REVIEW_ASPECTS.map((a) => [a.id, na[a.id] ? null : aspects[a.id]])
-        ),
-      };
-      const fd = new FormData();
-      fd.append("payload", JSON.stringify(payload));
-      for (const file of photos) fd.append("photos", file);
       const res = await fetch(`${API_URL}/spas/${slug}/reviews`, {
         method: "POST",
         headers: { authorization: `Bearer ${token}` },
@@ -144,18 +168,40 @@ function ReviewForm({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not submit review");
+      sessionStorage.removeItem(pendingReviewKey(slug));
+      pendingBody.current = null;
       toast("Review posted.");
       onCreated(data as Review);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Could not submit review";
       setError(message);
       toast(message, "error");
+      throw err;
     } finally {
       setSubmitting(false);
     }
   }
 
+  async function postAfterAuth() {
+    let sess = await update();
+    if (!sess?.apiToken) {
+      await new Promise((r) => setTimeout(r, 300));
+      sess = await update();
+    }
+    const token = sess?.apiToken;
+    if (!token) throw new Error("Signed in, but the session is not ready. Please try posting again.");
+    const fd = pendingBody.current;
+    if (!fd) throw new Error("Review draft was lost. Please try posting again.");
+    setAuthOpen(false);
+    try {
+      await postReview(token, fd);
+    } catch {
+      /* error already shown on the form */
+    }
+  }
+
   return (
+    <>
     <form onSubmit={submit} className="mt-4 space-y-4 rounded-2xl border border-veda-200 bg-white p-4">
       <div>
         <p id={overallId} className="text-sm font-medium">
@@ -348,6 +394,21 @@ function ReviewForm({
         </button>
       </div>
     </form>
+    <ReviewAuthLightbox
+      open={authOpen}
+      onClose={() => setAuthOpen(false)}
+      onAuthenticated={postAfterAuth}
+      onBeforeGoogle={() => {
+        sessionStorage.setItem(
+          pendingReviewKey(slug),
+          JSON.stringify({
+            payload: pendingPayload.current,
+            hadPhotos: photos.length > 0,
+          })
+        );
+      }}
+    />
+    </>
   );
 }
 
@@ -428,11 +489,68 @@ const EMPTY_SUMMARY: ReviewSummary = {
 
 export function ReviewsSection({ slug, initial }: { slug: string; initial: ReviewListResponse }) {
   const { data: session } = useSession();
+  const formRef = useRef<HTMLDivElement>(null);
+  const resumeLock = useRef(false);
   const [reviews, setReviews] = useState(initial.items);
   const [total, setTotal] = useState(initial.total);
   const [summary, setSummary] = useState(initial.summary ?? EMPTY_SUMMARY);
   const [page, setPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
+
+  useEffect(() => {
+    if (!showForm) return;
+    const el = formRef.current;
+    if (!el) return;
+    const id = window.setTimeout(() => easeScrollTo(el), 80);
+    return () => window.clearTimeout(id);
+  }, [showForm]);
+
+  useEffect(() => {
+    if (!session?.apiToken || resumeLock.current) return;
+    const raw = sessionStorage.getItem(pendingReviewKey(slug));
+    if (!raw) return;
+    resumeLock.current = true;
+    let stored: { payload?: unknown; hadPhotos?: boolean };
+    try {
+      stored = JSON.parse(raw) as { payload?: unknown; hadPhotos?: boolean };
+    } catch {
+      sessionStorage.removeItem(pendingReviewKey(slug));
+      return;
+    }
+    if (!stored.payload) {
+      sessionStorage.removeItem(pendingReviewKey(slug));
+      return;
+    }
+    void (async () => {
+      try {
+        const fd = new FormData();
+        fd.append("payload", JSON.stringify(stored.payload));
+        const res = await fetch(`${API_URL}/spas/${slug}/reviews`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${session.apiToken}` },
+          body: fd,
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Could not submit review");
+        sessionStorage.removeItem(pendingReviewKey(slug));
+        setReviews((prev) => [data as Review, ...prev]);
+        setTotal((t) => t + 1);
+        setShowForm(false);
+        toast(
+          stored.hadPhotos
+            ? "Review posted. Photos were not kept through Google sign-in — you can add them on a follow-up review."
+            : "Review posted."
+        );
+        const refreshed = await fetch(`${API_URL}/spas/${slug}/reviews?page=1`);
+        const list: ReviewListResponse = await refreshed.json();
+        setSummary(list.summary);
+      } catch (err) {
+        resumeLock.current = false;
+        const message = err instanceof Error ? err.message : "Could not submit review";
+        toast(message, "error");
+      }
+    })();
+  }, [session?.apiToken, slug]);
 
   async function loadMore() {
     const next = page + 1;
@@ -447,18 +565,13 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Revie
     <section className="mt-10">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-veda-900">Reviews ({summary.ratingCount})</h2>
-        {session ? (
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
-          >
-            {showForm ? "Cancel" : "Write a review"}
-          </button>
-        ) : (
-          <Link href="/auth/signin" className="text-sm text-veda-600 hover:underline">
-            Sign in to review
-          </Link>
-        )}
+        <button
+          type="button"
+          onClick={() => setShowForm((v) => !v)}
+          className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+        >
+          {showForm ? "Cancel" : "Write a review"}
+        </button>
       </div>
 
       {summary.ratingCount > 0 ? (
@@ -492,24 +605,25 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Revie
         <p className="mt-3 text-sm text-foreground/60">No reviews yet. Be the first to share your stay.</p>
       )}
 
-      {showForm && session?.apiToken ? (
-        <ReviewForm
-          slug={slug}
-          token={session.apiToken}
-          onCancel={() => setShowForm(false)}
+      {showForm ? (
+        <div ref={formRef} className="scroll-mt-24">
+          <ReviewForm
+            slug={slug}
+            onCancel={() => setShowForm(false)}
             onCreated={async (review) => {
-            setReviews((prev) => [review, ...prev]);
-            setTotal((t) => t + 1);
-            setShowForm(false);
-            try {
-              const res = await fetch(`${API_URL}/spas/${slug}/reviews?page=1`);
-              const data: ReviewListResponse = await res.json();
-              setSummary(data.summary);
-            } catch {
-              /* keep optimistic list; summary refreshes on next load */
-            }
-          }}
-        />
+              setReviews((prev) => [review, ...prev]);
+              setTotal((t) => t + 1);
+              setShowForm(false);
+              try {
+                const res = await fetch(`${API_URL}/spas/${slug}/reviews?page=1`);
+                const data: ReviewListResponse = await res.json();
+                setSummary(data.summary);
+              } catch {
+                /* keep optimistic list; summary refreshes on next load */
+              }
+            }}
+          />
+        </div>
       ) : null}
 
       <div className="mt-4 space-y-4">

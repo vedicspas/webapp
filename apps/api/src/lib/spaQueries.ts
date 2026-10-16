@@ -1,5 +1,5 @@
 import type { SpaSummary } from "@vedic/shared";
-import { query } from "../db/pool.js";
+import { execute, query } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { publicPhotoUrl } from "./uploads.js";
 
@@ -59,6 +59,15 @@ export async function amenityIdsBySpa(spaIds: number[]): Promise<Map<number, num
     map.set(row.spa_id, list);
   }
   return map;
+}
+
+export async function replaceSpaAmenities(spaId: number, amenityIds: number[]): Promise<void> {
+  const valid = new Set(staticCache.amenities.map((a) => a.id));
+  const unique = [...new Set(amenityIds.filter((id) => valid.has(id)))];
+  await execute("DELETE FROM spa_amenities WHERE spa_id = ?", [spaId]);
+  for (const id of unique) {
+    await execute("INSERT INTO spa_amenities (spa_id, amenity_id) VALUES (?,?)", [spaId, id]);
+  }
 }
 
 export function toSpaSummary(row: SpaSummaryRow, amenityIds: number[]): SpaSummary {

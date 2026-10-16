@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApi } from "@/lib/useApi";
 import { useMetaStore } from "@/stores/metaStore";
@@ -9,7 +9,8 @@ import { RemotePhoto } from "@/components/RemotePhoto";
 import { DollarInput, PostfixInput } from "@/components/AffixedInput";
 import { TagInput } from "@/components/TagInput";
 import { toast } from "@/stores/toastStore";
-import type { OnRequestFlag } from "@vedic/shared";
+import { easeScrollTo } from "@/lib/smoothScroll";
+import type { OnRequestFlag, StaticMeta } from "@vedic/shared";
 
 interface RetreatSlot {
   id: number;
@@ -103,9 +104,23 @@ interface SpaForm {
   languages: string[];
   dietaryOptions: string[];
   airportPickup: OnRequestFlag | null;
-  accommodationTypeId: number | null;
+  accommodationTypeIds: number[];
+  accommodationOther: string;
+  amenityIds: number[];
   accessibility: string;
   familyAccommodation: OnRequestFlag | null;
+}
+
+async function refreshStayMeta(): Promise<void> {
+  const url = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
+  try {
+    const live = await fetch(`${url}/meta`, { cache: "no-store" }).then((r) => r.json() as Promise<StaticMeta>);
+    if (Array.isArray(live?.accommodationTypes) && live.accommodationTypes.length > 0) {
+      useMetaStore.getState().hydrate(live);
+    }
+  } catch {
+    // Keep layout meta if the refresh fails.
+  }
 }
 
 const EMPTY: SpaForm = {
@@ -131,7 +146,9 @@ const EMPTY: SpaForm = {
   languages: [],
   dietaryOptions: [],
   airportPickup: null,
-  accommodationTypeId: null,
+  accommodationTypeIds: [],
+  accommodationOther: "",
+  amenityIds: [],
   accessibility: "",
   familyAccommodation: null,
 };
@@ -149,6 +166,8 @@ export default function VendorSpaEditPage() {
   const [form, setForm] = useState<SpaForm>(EMPTY);
   const [listingSlug, setListingSlug] = useState<string | null>(null);
   const [treatments, setTreatments] = useState<VendorTreatment[]>([]);
+  const lastTreatmentRef = useRef<HTMLDivElement>(null);
+  const scrollToNewTreatment = useRef(false);
   const [photos, setPhotos] = useState<VendorPhoto[]>([]);
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -172,6 +191,7 @@ export default function VendorSpaEditPage() {
   }
 
   const load = useCallback(async () => {
+    await refreshStayMeta();
     const data = await call<{
       slug?: string;
       clinicCode?: string;
@@ -180,7 +200,9 @@ export default function VendorSpaEditPage() {
       openHours: { weekday: number; openTime: string; closeTime: string }[];
       languages?: { id: number; name: string }[];
       dietaryOptions?: { id: number; name: string }[];
-      accommodationTypeId?: number | null;
+      accommodationTypes?: { id: number; name: string }[];
+      accommodationOther?: string | null;
+      amenityIds?: number[];
       airportPickup?: OnRequestFlag | null;
       familyAccommodation?: OnRequestFlag | null;
       accessibility?: string | null;
@@ -215,7 +237,9 @@ export default function VendorSpaEditPage() {
       languages: (data.languages ?? []).map((l) => l.name),
       dietaryOptions: (data.dietaryOptions ?? []).map((d) => d.name),
       airportPickup: data.airportPickup ?? null,
-      accommodationTypeId: data.accommodationTypeId ?? null,
+      accommodationTypeIds: (data.accommodationTypes ?? []).map((t) => t.id),
+      accommodationOther: data.accommodationOther ?? "",
+      amenityIds: data.amenityIds ?? [],
       accessibility: data.accessibility ?? "",
       familyAccommodation: data.familyAccommodation ?? null,
     });
@@ -255,6 +279,11 @@ export default function VendorSpaEditPage() {
     if (token && !isNew) load().catch(() => router.push("/vendor"));
   }, [token, isNew, load, router]);
 
+  useEffect(() => {
+    if (!isNew) return;
+    void refreshStayMeta();
+  }, [isNew]);
+
   async function save() {
     setBusy(true);
     try {
@@ -269,7 +298,9 @@ export default function VendorSpaEditPage() {
         languages: form.languages,
         dietaryOptions: form.dietaryOptions,
         airportPickup: form.airportPickup,
-        accommodationTypeId: form.accommodationTypeId,
+        accommodationTypeIds: form.accommodationTypeIds,
+        accommodationOther: form.accommodationOther.trim() || null,
+        amenityIds: form.amenityIds,
         accessibility: form.accessibility.trim() || null,
         familyAccommodation: form.familyAccommodation,
       };
@@ -382,10 +413,22 @@ export default function VendorSpaEditPage() {
           : "Save the treatment above before adding another.",
         "error"
       );
+      const el = lastTreatmentRef.current;
+      if (el) window.setTimeout(() => easeScrollTo(el), 80);
       return;
     }
+    scrollToNewTreatment.current = true;
     setTreatments((list) => [...list, blankTreatment(meta.treatmentCategories[0]?.id ?? 1)]);
   }
+
+  useEffect(() => {
+    if (!scrollToNewTreatment.current) return;
+    scrollToNewTreatment.current = false;
+    const el = lastTreatmentRef.current;
+    if (!el) return;
+    const id = window.setTimeout(() => easeScrollTo(el), 80);
+    return () => window.clearTimeout(id);
+  }, [treatments.length]);
 
   async function saveTreatment(t: VendorTreatment, index: number) {
     const missing = treatmentReadyToSave(t);
@@ -595,6 +638,38 @@ export default function VendorSpaEditPage() {
       </section>
 
       <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Amenities</h2>
+        <p className="text-sm text-foreground/60">
+          Optional. Shown as chips on your public listing. Select every amenity guests can use.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {(meta.amenities ?? []).map((a) => {
+            const on = form.amenityIds.includes(a.id);
+            return (
+              <button
+                key={a.id}
+                type="button"
+                onClick={() =>
+                  set({
+                    amenityIds: on
+                      ? form.amenityIds.filter((id) => id !== a.id)
+                      : [...form.amenityIds, a.id],
+                  })
+                }
+                className={`rounded-full px-3 py-1.5 text-sm ${
+                  on
+                    ? "bg-veda-600 text-white"
+                    : "border border-veda-200 text-veda-800 hover:bg-veda-50"
+                }`}
+              >
+                {a.name}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Stay &amp; access</h2>
         <p className="text-sm text-foreground/60">Optional. Shown on your public listing when filled in.</p>
         <label className={label}>
@@ -622,20 +697,35 @@ export default function VendorSpaEditPage() {
         </label>
         <label className={label}>
           Accommodation type
-          <select
+          <TagInput
+            values={(meta.accommodationTypes ?? [])
+              .filter((t) => form.accommodationTypeIds.includes(t.id))
+              .map((t) => t.name)}
+            onChange={(names) => {
+              const picked = names
+                .map((name) =>
+                  (meta.accommodationTypes ?? []).find(
+                    (t) => t.name.toLowerCase() === name.toLowerCase()
+                  )
+                )
+                .filter((t): t is NonNullable<typeof t> => Boolean(t))
+                .map((t) => t.id);
+              set({ accommodationTypeIds: picked });
+            }}
+            suggestions={(meta.accommodationTypes ?? []).map((t) => t.name)}
+            placeholder="Choose one or more types"
+            allowCreate={false}
+          />
+        </label>
+        <label className={label}>
+          Other accommodation (this listing only)
+          <input
             className={input}
-            value={form.accommodationTypeId ?? ""}
-            onChange={(e) =>
-              set({ accommodationTypeId: e.target.value ? Number(e.target.value) : null })
-            }
-          >
-            <option value="">Not specified</option>
-            {(meta.accommodationTypes ?? []).map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
+            maxLength={200}
+            value={form.accommodationOther}
+            onChange={(e) => set({ accommodationOther: e.target.value })}
+            placeholder="e.g. Not in clinic, but available nearby"
+          />
         </label>
         <label className={label}>
           Dietary options
@@ -898,7 +988,11 @@ export default function VendorSpaEditPage() {
             Save each treatment before adding another. Delete asks for confirmation first.
           </p>
           {treatments.map((t, i) => (
-            <div key={t.id ?? t.clientKey ?? `new-${i}`} className="space-y-2 rounded-xl border border-veda-100 p-3">
+            <div
+              key={t.id ?? t.clientKey ?? `new-${i}`}
+              ref={i === treatments.length - 1 ? lastTreatmentRef : undefined}
+              className="space-y-2 rounded-xl border border-veda-100 p-3"
+            >
               <div className="grid items-start gap-2 sm:grid-cols-2">
                 <label className={label}>
                   Treatment name

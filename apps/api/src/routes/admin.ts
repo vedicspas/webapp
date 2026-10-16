@@ -611,4 +611,69 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Email not found" });
     return { ok: true };
   });
+
+  app.get("/admin/accommodation-types", async () => {
+    const rows = await query<{ id: number; name: string; usageCount: number }>(
+      `SELECT t.id, t.name, COUNT(sat.spa_id) AS usageCount
+       FROM accommodation_types t
+       LEFT JOIN spa_accommodation_types sat ON sat.accommodation_type_id = t.id
+       GROUP BY t.id, t.name
+       ORDER BY t.name`
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, usageCount: Number(r.usageCount) }));
+  });
+
+  app.post("/admin/accommodation-types", async (request, reply) => {
+    const body = z.object({ name: z.string().min(2).max(80) }).parse(request.body);
+    const name = body.name.trim().replace(/\s+/g, " ");
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a type name." });
+    try {
+      const result = await execute("INSERT INTO accommodation_types (name) VALUES (?)", [name]);
+      await staticCache.reload();
+      return reply.code(201).send({ id: result.insertId, name, usageCount: 0 });
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That accommodation type already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/admin/accommodation-types/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const body = z.object({ name: z.string().min(2).max(80) }).parse(request.body);
+    const name = body.name.trim().replace(/\s+/g, " ");
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a type name." });
+    const existing = await queryOne<{ id: number }>("SELECT id FROM accommodation_types WHERE id = ?", [id]);
+    if (!existing) return reply.code(404).send({ error: "Type not found" });
+    try {
+      await execute("UPDATE accommodation_types SET name = ? WHERE id = ?", [name, id]);
+      await staticCache.reload();
+      return { id, name };
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That accommodation type already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/admin/accommodation-types/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const existing = await queryOne<{ id: number }>("SELECT id FROM accommodation_types WHERE id = ?", [id]);
+    if (!existing) return reply.code(404).send({ error: "Type not found" });
+    const used = await queryOne<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM spa_accommodation_types WHERE accommodation_type_id = ?",
+      [id]
+    );
+    const n = Number(used?.n ?? 0);
+    if (n > 0) {
+      return reply
+        .code(409)
+        .send({ error: `This type is used by ${n} listing${n === 1 ? "" : "s"}. Remove it there first.` });
+    }
+    await execute("DELETE FROM accommodation_types WHERE id = ?", [id]);
+    await staticCache.reload();
+    return { ok: true };
+  });
 }

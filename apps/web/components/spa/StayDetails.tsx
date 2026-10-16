@@ -32,11 +32,17 @@ export function StayDetails({ spa }: { spa: SpaDetail }) {
   const dietaryOptions = spa.dietaryOptions ?? [];
   const airport = flagLabel(spa.airportPickup ?? null);
   const family = flagLabel(spa.familyAccommodation ?? null);
+  const accommodationLine = [
+    ...(spa.accommodationTypes ?? []).map((t) => t.name),
+    spa.accommodationOther?.trim() || "",
+  ]
+    .filter(Boolean)
+    .join(", ");
   const hasStay =
     languages.length > 0 ||
     dietaryOptions.length > 0 ||
     airport ||
-    spa.accommodationType ||
+    accommodationLine ||
     spa.accessibility ||
     family;
   if (!hasStay) return null;
@@ -51,9 +57,7 @@ export function StayDetails({ spa }: { spa: SpaDetail }) {
           </Row>
         ) : null}
         {airport ? <Row label="Airport pickup">{airport}</Row> : null}
-        {spa.accommodationType ? (
-          <Row label="Accommodation type">{spa.accommodationType.name}</Row>
-        ) : null}
+        {accommodationLine ? <Row label="Accommodation type">{accommodationLine}</Row> : null}
         {dietaryOptions.length > 0 ? (
           <Row label="Dietary options">
             <Tags items={dietaryOptions} />

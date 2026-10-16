@@ -7,11 +7,13 @@ export function TagInput({
   onChange,
   suggestions,
   placeholder,
+  allowCreate = true,
 }: {
   values: string[];
   onChange: (next: string[]) => void;
   suggestions: string[];
   placeholder?: string;
+  allowCreate?: boolean;
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -28,14 +30,15 @@ export function TagInput({
   }, [q, selected, suggestions]);
 
   const exact = suggestions.find((s) => s.toLowerCase() === q.toLowerCase());
-  const canCreate = q.length > 1 && !selected.has(q.toLowerCase()) && !exact;
+  const canCreate = allowCreate && q.length > 1 && !selected.has(q.toLowerCase()) && !exact;
   const options = canCreate ? [`Add “${q}”`, ...matches] : matches;
 
   function add(name: string) {
     const cleaned = name.trim().replace(/\s+/g, " ");
     if (!cleaned || selected.has(cleaned.toLowerCase())) return;
-    const canonical = suggestions.find((s) => s.toLowerCase() === cleaned.toLowerCase()) ?? cleaned;
-    onChange([...values, canonical]);
+    const canonical = suggestions.find((s) => s.toLowerCase() === cleaned.toLowerCase());
+    if (!canonical && !allowCreate) return;
+    onChange([...values, canonical ?? cleaned]);
     setQuery("");
     setHighlight(0);
     inputRef.current?.focus();
@@ -98,7 +101,7 @@ export function TagInput({
             if (e.key === "Enter" || e.key === ",") {
               e.preventDefault();
               if (options[highlight]) pick(options[highlight]);
-              else if (q) add(q);
+              else if (q && allowCreate) add(q);
             }
             if (e.key === "Escape") setOpen(false);
           }}

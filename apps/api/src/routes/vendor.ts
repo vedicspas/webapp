@@ -10,6 +10,7 @@ import { toBooking } from "./bookings.js";
 import { toReview, photosByReview } from "./reviews.js";
 import { issueSessionForUserId } from "./auth.js";
 import { ensureVendorAccount } from "../lib/vendorAccount.js";
+import { amenityIdsBySpa, replaceSpaAmenities } from "../lib/spaQueries.js";
 import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { allocateClinicCode, parseBookingRefInput } from "../lib/bookingRefs.js";
 import { loadSpaOwner, notifyClinicSubmitted, notifySpaOwnerForPublish, notifyWelcomeVendor } from "../lib/notify.js";
@@ -88,7 +89,9 @@ const spaBodySchema = z.object({
   languages: z.array(z.string().max(80)).optional().default([]),
   dietaryOptions: z.array(z.string().max(80)).optional().default([]),
   airportPickup: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
-  accommodationTypeId: z.number().int().nullable().optional().default(null),
+  accommodationTypeIds: z.array(z.number().int().positive()).optional().default([]),
+  accommodationOther: z.string().max(200).nullable().optional().default(null),
+  amenityIds: z.array(z.number().int().positive()).optional().default([]),
   accessibility: z.string().max(2000).nullable().optional().default(null),
   familyAccommodation: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
 });
@@ -265,6 +268,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     await saveSpaStay(result.insertId, body);
+    await replaceSpaAmenities(result.insertId, body.amenityIds);
     const owner = await loadSpaOwner(result.insertId);
     if (owner) {
       if (body.isPublished) {
@@ -315,6 +319,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     await saveSpaStay(spaId, body);
+    await replaceSpaAmenities(spaId, body.amenityIds);
     if (body.isPublished && !before?.is_published) {
       await notifySpaOwnerForPublish(spaId, true);
     }
@@ -382,6 +387,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       [spaId]
     );
     const stay = await loadSpaStay(spaId);
+    const amenities = await amenityIdsBySpa([spaId]);
     return {
       ...spa,
       countryId: spa.countryId == null ? null : Number(spa.countryId),
@@ -407,8 +413,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         alt: p.alt,
         sortOrder: p.sortOrder,
       })),
+      amenityIds: amenities.get(spaId) ?? [],
       ...stay,
-      accommodationTypeId: stay.accommodationType?.id ?? null,
     };
   });
 

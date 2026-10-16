@@ -85,6 +85,10 @@ export default function AdminSettingsPage() {
         <Link href="/admin/emails" className="text-veda-700 underline hover:text-veda-900">
           Emails
         </Link>
+        {" · "}
+        <Link href="/admin/accommodation-types" className="text-veda-700 underline hover:text-veda-900">
+          Accommodation types
+        </Link>
       </p>
       <h1 className="mt-3 text-2xl font-bold text-veda-900">Site settings</h1>
       <p className="mt-2 text-sm text-foreground/60">

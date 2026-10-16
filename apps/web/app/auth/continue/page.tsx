@@ -18,7 +18,7 @@ function ContinueInner() {
       router.replace("/auth/signin");
       return;
     }
-    if (session?.isNewAccount) {
+    if (session?.isNewAccount && !next.startsWith("/spas/")) {
       window.location.replace("/auth/welcome");
       return;
     }

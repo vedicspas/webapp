@@ -422,6 +422,9 @@ export default function AdminPage() {
           <Link href="/admin/emails" className="text-veda-700 underline hover:text-veda-900">
             Emails
           </Link>
+          <Link href="/admin/accommodation-types" className="text-veda-700 underline hover:text-veda-900">
+            Accommodation types
+          </Link>
           <Link href="/admin/settings" className="text-veda-700 underline hover:text-veda-900">
             Site settings
           </Link>

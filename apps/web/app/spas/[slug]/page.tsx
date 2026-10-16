@@ -89,8 +89,12 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
             {spa.description}
           </p>
 
-          <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
-          <AmenityList amenityIds={spa.amenityIds} />
+          {spa.amenityIds.length > 0 ? (
+            <>
+              <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
+              <AmenityList amenityIds={spa.amenityIds} />
+            </>
+          ) : null}
 
           <StayDetails spa={spa} />
 

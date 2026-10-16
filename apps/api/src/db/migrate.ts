@@ -54,16 +54,10 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   );
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS airport_pickup ENUM('on_request','not_available') NULL");
-  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS accommodation_type_id SMALLINT UNSIGNED NULL");
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS accessibility TEXT NULL");
   await run(
     conn,
     "ALTER TABLE spas ADD COLUMN IF NOT EXISTS family_accommodation ENUM('on_request','not_available') NULL"
-  );
-  await run(
-    conn,
-    `ALTER TABLE spas ADD CONSTRAINT fk_spa_accommodation
-      FOREIGN KEY (accommodation_type_id) REFERENCES accommodation_types(id)`
   );
   await run(
     conn,
@@ -85,9 +79,30 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
       CONSTRAINT fk_sdo_diet FOREIGN KEY (dietary_option_id) REFERENCES dietary_options(id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS spa_accommodation_types (
+      spa_id BIGINT UNSIGNED NOT NULL,
+      accommodation_type_id SMALLINT UNSIGNED NOT NULL,
+      PRIMARY KEY (spa_id, accommodation_type_id),
+      CONSTRAINT fk_sat_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+      CONSTRAINT fk_sat_type FOREIGN KEY (accommodation_type_id) REFERENCES accommodation_types(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS accommodation_other VARCHAR(200) NULL");
   await conn.query(insertIgnore("languages", LANGUAGE_NAMES));
   await conn.query(insertIgnore("dietary_options", DIETARY_NAMES));
   await conn.query(insertIgnore("accommodation_types", ACCOMMODATION_NAMES));
+
+  const [legacyAccCol] = await conn.query("SHOW COLUMNS FROM spas LIKE 'accommodation_type_id'");
+  if (Array.isArray(legacyAccCol) && legacyAccCol.length > 0) {
+    await conn.query(
+      `INSERT IGNORE INTO spa_accommodation_types (spa_id, accommodation_type_id)
+       SELECT id, accommodation_type_id FROM spas WHERE accommodation_type_id IS NOT NULL`
+    );
+    await run(conn, "ALTER TABLE spas DROP FOREIGN KEY fk_spa_accommodation");
+    await run(conn, "ALTER TABLE spas DROP COLUMN accommodation_type_id");
+  }
 
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS clinic_code CHAR(6) NULL");
   const [spaRows] = await conn.query("SELECT id FROM spas WHERE clinic_code IS NULL OR clinic_code = ''");
