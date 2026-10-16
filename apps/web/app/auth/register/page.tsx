@@ -5,6 +5,7 @@ import { signIn } from "next-auth/react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PageBusy } from "@/components/PageBusy";
+import { TurnstileField, useTurnstileSiteKey } from "@/components/TurnstileField";
 import { setSignupIntent, signupRoleFromSearch, type SignupRole } from "@/lib/signupIntent";
 
 const ROLES: { id: SignupRole; title: string; description: string }[] = [
@@ -28,6 +29,9 @@ function RegisterForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const siteKey = useTurnstileSiteKey();
 
   useEffect(() => {
     setSignupIntent(role);
@@ -38,6 +42,10 @@ function RegisterForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (siteKey && !turnstileToken) {
+      setError("Please confirm you are human.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -49,15 +57,18 @@ function RegisterForm() {
           email,
           password,
           intent: role,
+          turnstileToken,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Registration failed");
-      const signedIn = await signIn("credentials", { email, password, redirect: false });
+      const signedIn = await signIn("credentials", { email, apiToken: data.apiToken, redirect: false });
       if (signedIn?.error) throw new Error("Account created, but sign-in failed. Please sign in.");
       window.location.assign("/auth/welcome");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
+      setTurnstileToken("");
+      setCaptchaReset((n) => n + 1);
       setBusy(false);
     }
   }
@@ -117,6 +128,9 @@ function RegisterForm() {
           placeholder="Password (min 8 characters)"
           className="w-full rounded-lg border border-veda-200 px-3 py-2.5 text-sm"
         />
+        {siteKey ? (
+          <TurnstileField key={captchaReset} siteKey={siteKey} onToken={setTurnstileToken} />
+        ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <button
           type="submit"

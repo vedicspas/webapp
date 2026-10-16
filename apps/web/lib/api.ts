@@ -75,6 +75,7 @@ export const EMPTY_META: StaticMeta = {
   languages: [],
   dietaryOptions: [],
   accommodationTypes: [],
+  turnstileSiteKey: null,
 };
 
 export const getMeta = () => api<StaticMeta>("/meta", { revalidate: 3600 });

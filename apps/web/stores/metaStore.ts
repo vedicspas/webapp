@@ -15,6 +15,7 @@ const empty: StaticMeta = {
   languages: [],
   dietaryOptions: [],
   accommodationTypes: [],
+  turnstileSiteKey: null,
 };
 
 interface MetaState {

@@ -41,11 +41,37 @@ async function apiAuth(path: string, body: unknown): Promise<ApiSession | null> 
 
 const providers = [
   Credentials({
-    credentials: { email: { label: "Email" }, password: { label: "Password", type: "password" } },
+    credentials: {
+      email: { label: "Email" },
+      password: { label: "Password", type: "password" },
+      turnstileToken: { label: "Turnstile", type: "text" },
+      apiToken: { label: "API token", type: "text" },
+    },
     authorize: async (credentials) => {
+      const apiToken = typeof credentials?.apiToken === "string" ? credentials.apiToken : "";
+      if (apiToken) {
+        try {
+          const res = await fetch(`${API_URL}/users/me`, {
+            headers: { authorization: `Bearer ${apiToken}` },
+          });
+          if (!res.ok) return null;
+          const data = (await res.json()) as ApiSession;
+          if (!data?.user) return null;
+          return {
+            id: String(data.user.id),
+            email: data.user.email,
+            name: data.user.name,
+            image: data.user.avatarUrl,
+            apiSession: { user: data.user, apiToken },
+          };
+        } catch {
+          return null;
+        }
+      }
       const result = await apiAuth("/auth/login", {
         email: credentials?.email,
         password: credentials?.password,
+        turnstileToken: credentials?.turnstileToken,
       });
       if (!result) return null;
       return {

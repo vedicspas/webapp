@@ -12,6 +12,7 @@ import type {
   TreatmentCategory,
 } from "@vedic/shared";
 import { query } from "../db/pool.js";
+import { turnstileSiteKey } from "../lib/turnstile.js";
 
 /**
  * Static lookup tables, loaded once at startup and kept as plain arrays in
@@ -180,6 +181,7 @@ class StaticCache {
       languages: this.languages,
       dietaryOptions: this.dietaryOptions,
       accommodationTypes: this.accommodationTypes,
+      turnstileSiteKey: turnstileSiteKey(),
     };
   }
 }

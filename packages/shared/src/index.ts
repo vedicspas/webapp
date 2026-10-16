@@ -88,6 +88,7 @@ export interface StaticMeta {
   languages: NamedLookup[];
   dietaryOptions: NamedLookup[];
   accommodationTypes: NamedLookup[];
+  turnstileSiteKey?: string | null;
 }
 
 /** Public contact details from `site_settings`, cached in API memory. */

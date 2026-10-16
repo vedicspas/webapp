@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { signIn, useSession } from "next-auth/react";
 import { setSignupIntent } from "@/lib/signupIntent";
+import { TurnstileField, useTurnstileSiteKey } from "@/components/TurnstileField";
 
 type Mode = "login" | "signup";
 
@@ -25,6 +26,9 @@ export function ReviewAuthLightbox({
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const siteKey = useTurnstileSiteKey();
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
   useEffect(() => {
@@ -32,6 +36,8 @@ export function ReviewAuthLightbox({
     setMode("login");
     setError(null);
     setBusy(false);
+    setTurnstileToken("");
+    setCaptchaReset((n) => n + 1);
     setSignupIntent("visitor");
   }, [open]);
 
@@ -58,11 +64,17 @@ export function ReviewAuthLightbox({
 
   async function submitLogin(e: React.FormEvent) {
     e.preventDefault();
+    if (siteKey && !turnstileToken) {
+      setError("Please confirm you are human.");
+      return;
+    }
     setBusy(true);
     setError(null);
-    const result = await signIn("credentials", { email, password, redirect: false });
+    const result = await signIn("credentials", { email, password, turnstileToken, redirect: false });
     if (result?.error) {
       setBusy(false);
+      setTurnstileToken("");
+      setCaptchaReset((n) => n + 1);
       setError("Invalid email or password");
       return;
     }
@@ -76,6 +88,10 @@ export function ReviewAuthLightbox({
 
   async function submitSignup(e: React.FormEvent) {
     e.preventDefault();
+    if (siteKey && !turnstileToken) {
+      setError("Please confirm you are human.");
+      return;
+    }
     setBusy(true);
     setError(null);
     setSignupIntent("visitor");
@@ -83,15 +99,21 @@ export function ReviewAuthLightbox({
       const res = await fetch(`${apiUrl}/auth/register`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, email, password, intent: "visitor" }),
+        body: JSON.stringify({ name, email, password, intent: "visitor", turnstileToken }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Registration failed");
-      const signedIn = await signIn("credentials", { email, password, redirect: false });
+      const signedIn = await signIn("credentials", {
+        email,
+        apiToken: data.apiToken,
+        redirect: false,
+      });
       if (signedIn?.error) throw new Error("Account created, but sign-in failed. Please sign in.");
       await finishAuth();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
+      setTurnstileToken("");
+      setCaptchaReset((n) => n + 1);
       setBusy(false);
     }
   }
@@ -136,6 +158,8 @@ export function ReviewAuthLightbox({
               onClick={() => {
                 setMode("login");
                 setError(null);
+                setTurnstileToken("");
+                setCaptchaReset((n) => n + 1);
               }}
               className={`rounded-full py-2 font-medium ${
                 mode === "login" ? "bg-white text-veda-900 shadow-sm" : "text-foreground/60"
@@ -149,6 +173,8 @@ export function ReviewAuthLightbox({
               onClick={() => {
                 setMode("signup");
                 setError(null);
+                setTurnstileToken("");
+                setCaptchaReset((n) => n + 1);
               }}
               className={`rounded-full py-2 font-medium ${
                 mode === "signup" ? "bg-white text-veda-900 shadow-sm" : "text-foreground/60"
@@ -178,6 +204,9 @@ export function ReviewAuthLightbox({
                 placeholder="Password"
                 className="w-full rounded-lg border border-veda-200 px-3 py-2.5 text-sm"
               />
+              {siteKey ? (
+                <TurnstileField key={`login-${captchaReset}`} siteKey={siteKey} onToken={setTurnstileToken} />
+              ) : null}
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
               <button
                 type="submit"
@@ -216,6 +245,9 @@ export function ReviewAuthLightbox({
                 placeholder="Password (min 8 characters)"
                 className="w-full rounded-lg border border-veda-200 px-3 py-2.5 text-sm"
               />
+              {siteKey ? (
+                <TurnstileField key={`signup-${captchaReset}`} siteKey={siteKey} onToken={setTurnstileToken} />
+              ) : null}
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
               <button
                 type="submit"

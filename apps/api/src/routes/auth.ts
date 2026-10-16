@@ -9,6 +9,7 @@ import { ensureVendorAccount } from "../lib/vendorAccount.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
 import { notifyPasswordReset, notifyPasswordUpdated, notifyWelcomeUser, notifyWelcomeVendor } from "../lib/notify.js";
 import { readEmailToken, signEmailToken, siteUrl } from "../lib/mailer.js";
+import { assertTurnstile } from "../lib/turnstile.js";
 
 interface UserRow {
   id: number;
@@ -59,8 +60,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         password: z.string().min(8),
         name: z.string().min(1).max(120),
         intent: z.enum(["visitor", "vendor", "traveler"]).optional().default("visitor"),
+        turnstileToken: z.string().optional(),
       })
       .parse(request.body);
+    await assertTurnstile(request, body.turnstileToken);
 
     const existing = await queryOne("SELECT id FROM users WHERE email = ?", [body.email]);
     if (existing) {
@@ -86,8 +89,13 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
 
   app.post("/auth/login", async (request, reply) => {
     const body = z
-      .object({ email: z.string().email(), password: z.string() })
+      .object({
+        email: z.string().email(),
+        password: z.string(),
+        turnstileToken: z.string().optional(),
+      })
       .parse(request.body);
+    await assertTurnstile(request, body.turnstileToken);
 
     const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [body.email]);
     if (!row?.password_hash || !(await bcrypt.compare(body.password, row.password_hash))) {

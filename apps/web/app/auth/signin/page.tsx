@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { setVendorSignupIntent, vendorIntentFromSearch } from "@/lib/signupIntent";
 import { PageBusy } from "@/components/PageBusy";
+import { TurnstileField, useTurnstileSiteKey } from "@/components/TurnstileField";
 
 function SignInForm() {
   const router = useRouter();
@@ -16,6 +17,9 @@ function SignInForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState("");
+  const [captchaReset, setCaptchaReset] = useState(0);
+  const siteKey = useTurnstileSiteKey();
 
   useEffect(() => {
     if (intent === "vendor") setVendorSignupIntent();
@@ -27,11 +31,17 @@ function SignInForm() {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (siteKey && !turnstileToken) {
+      setError("Please confirm you are human.");
+      return;
+    }
     setBusy(true);
     setError(null);
-    const result = await signIn("credentials", { email, password, redirect: false });
+    const result = await signIn("credentials", { email, password, turnstileToken, redirect: false });
     setBusy(false);
     if (result?.error) {
+      setTurnstileToken("");
+      setCaptchaReset((n) => n + 1);
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
       try {
         const health = await fetch(`${apiUrl}/health`, { cache: "no-store" });
@@ -74,6 +84,9 @@ function SignInForm() {
           placeholder="Password"
           className="w-full rounded-lg border border-veda-200 px-3 py-2.5 text-sm"
         />
+        {siteKey ? (
+          <TurnstileField key={captchaReset} siteKey={siteKey} onToken={setTurnstileToken} />
+        ) : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <button
           type="submit"
