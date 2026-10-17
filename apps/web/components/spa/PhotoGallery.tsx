@@ -90,14 +90,7 @@ export function PhotoGallery({
     };
   }, [lightbox, photos.length]);
 
-  if (photos.length === 0) {
-    return (
-      <div className="relative overflow-hidden rounded-2xl bg-veda-100">
-        <div className="aspect-[4/3] w-full" />
-        <WishlistButton spaId={spaId} className="absolute right-3 top-3 z-10" />
-      </div>
-    );
-  }
+  if (photos.length === 0) return null;
 
   const gap = 8;
   const slidePct = 100 / visible;

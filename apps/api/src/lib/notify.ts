@@ -399,3 +399,184 @@ export async function loadSpaOwner(spaId: number): Promise<{
 export async function userById(id: number): Promise<{ email: string; name: string } | null> {
   return queryOne("SELECT email, name FROM users WHERE id = ?", [id]);
 }
+
+function clinicAddress(row: {
+  address_line: string;
+  city_name: string;
+  state: string;
+  postal_code: string;
+  country_id: number | null;
+}): string {
+  const country = row.country_id ? staticCache.country(Number(row.country_id))?.name ?? "" : "";
+  return [row.address_line, row.city_name, row.state, row.postal_code, country]
+    .map((p) => (p ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+}
+
+export function notifyClaimOtp(to: string, name: string, code: string) {
+  return sendTransactional({
+    type: "claim_otp",
+    to,
+    subject: "Your clinic claim verification code",
+    firstName: firstName(name, to),
+    paragraphs: [
+      `Your verification code is ${code}.`,
+      "This code expires in 10 minutes. If you did not request it, you can ignore this email.",
+    ],
+  });
+}
+
+export function notifyClaimReceived(opts: {
+  to: string;
+  name: string;
+  clinicName: string;
+  slug: string;
+}): Promise<void> {
+  return sendQuiet(() =>
+    sendTransactional({
+      type: "claim_received",
+      to: opts.to,
+      subject: `We've received your claim request for ${opts.clinicName}`,
+      firstName: firstName(opts.name, opts.to),
+      paragraphs: [
+        `Thank you for submitting a claim request for ${opts.clinicName} on AyurvedaAdvisor.com.`,
+        "Our team will review your details to verify that you're authorised to represent the clinic. If we need any additional information or documents, we'll contact you by email.",
+        "We'll notify you once the review is complete. Once approved, you'll be able to manage and update the clinic listing from your account.",
+      ],
+      actionLabel: "View clinic listing",
+      actionUrl: siteUrl(`/spas/${opts.slug}`),
+    })
+  );
+}
+
+export function notifyClaimAdminNotice(opts: {
+  clinicName: string;
+  clinicAddress: string;
+  claimantName: string;
+  relationship: string;
+  claimantEmail: string;
+  claimantPhone: string;
+  submittedAt: Date | string;
+  claimId: number;
+}): Promise<void> {
+  const when = formatWhen(opts.submittedAt);
+  return sendQuiet(() =>
+    sendTransactional({
+      type: "claim_admin_notice",
+      to: supportEmail(),
+      subject: `New claim request: ${opts.clinicName}`,
+      firstName: "Admin",
+      paragraphs: [
+        `A new claim request has been submitted for ${opts.clinicName} on AyurvedaAdvisor.com.`,
+        `Clinic: ${opts.clinicName}\nAddress: ${opts.clinicAddress}\nClaimant: ${opts.claimantName}\nRelationship to clinic: ${opts.relationship}\nEmail: ${opts.claimantEmail}\nPhone: ${opts.claimantPhone}\nSubmitted on: ${when.date} ${when.time}`,
+        "Please review the claimant's details and supporting documents before approving or rejecting the request.",
+        "The claimant will receive management access only after approval.",
+      ],
+      actionLabel: "Review claim",
+      actionUrl: siteUrl(`/admin/claims?claimId=${opts.claimId}`),
+    })
+  );
+}
+
+export function notifyClaimApproved(opts: {
+  to: string;
+  name: string;
+  clinicName: string;
+  spaId: number;
+}): Promise<void> {
+  return sendQuiet(() =>
+    sendTransactional({
+      type: "claim_approved",
+      to: opts.to,
+      subject: `Your claim for ${opts.clinicName} has been approved`,
+      firstName: firstName(opts.name, opts.to),
+      paragraphs: [
+        `Your claim for ${opts.clinicName} on AyurvedaAdvisor.com has been approved!`,
+        "You can now manage your clinic listing, update its details, and add photos from your account.",
+        "Thank you for joining AyurvedaAdvisor.",
+      ],
+      actionLabel: "Manage your clinic",
+      actionUrl: siteUrl(`/vendor/spas/${opts.spaId}`),
+    })
+  );
+}
+
+export function notifyClaimRejected(opts: {
+  to: string;
+  name: string;
+  clinicName: string;
+  slug: string;
+  rejectionNote: string;
+}): Promise<void> {
+  return sendQuiet(() =>
+    sendTransactional({
+      type: "claim_rejected",
+      to: opts.to,
+      subject: `Update on your claim for ${opts.clinicName}`,
+      firstName: firstName(opts.name, opts.to),
+      paragraphs: [
+        `Thank you for requesting to manage ${opts.clinicName} on AyurvedaAdvisor.com.`,
+        "After reviewing your submission, we're unable to approve your claim at this time.",
+        `Review note: ${opts.rejectionNote}`,
+        `If you believe this decision was made in error or have additional information supporting your claim, please contact us at ${supportEmail()}.`,
+      ],
+      actionLabel: "View clinic listing",
+      actionUrl: siteUrl(`/spas/${opts.slug}`),
+    })
+  );
+}
+
+export function notifyPatientInterest(opts: {
+  clinicName: string;
+  clinicAddress: string;
+  slug: string;
+  patientName: string;
+  patientEmail: string;
+  patientPhone: string;
+  interestedService: string;
+  preferredVisitTimeframe: string;
+  sharingConsent: string;
+  submittedAt: Date | string;
+  inquiryId: number;
+}): Promise<void> {
+  const when = formatWhen(opts.submittedAt);
+  const listingUrl = siteUrl(`/spas/${opts.slug}`);
+  return sendQuiet(() =>
+    sendTransactional({
+      type: "patient_interest",
+      to: supportEmail(),
+      subject: `New patient interest: ${opts.clinicName} — unclaimed listing`,
+      firstName: "Admin",
+      paragraphs: [
+        "A visitor has expressed interest in an unclaimed clinic on AyurvedaAdvisor.com.",
+        `Clinic: [${opts.clinicName}](${listingUrl})\nAddress: ${opts.clinicAddress}\nName: ${opts.patientName}\nEmail: ${opts.patientEmail}\nPhone: ${opts.patientPhone}\nInterested service: ${opts.interestedService}\nPreferred visit timeframe: ${opts.preferredVisitTimeframe}\nConsent to share enquiry with clinic after claim approval: ${opts.sharingConsent}\nSubmitted on: ${when.date} ${when.time}`,
+        "This enquiry has not been sent to the clinic, and no appointment has been booked.",
+      ],
+      actionLabel: "Review enquiry",
+      actionUrl: siteUrl(`/admin/inquiries?inquiryId=${opts.inquiryId}`),
+    })
+  );
+}
+
+export async function loadSpaAddress(spaId: number): Promise<{
+  spaName: string;
+  slug: string;
+  address: string;
+} | null> {
+  const row = await queryOne<{
+    spa_name: string;
+    slug: string;
+    address_line: string;
+    city_name: string;
+    state: string;
+    postal_code: string;
+    country_id: number | null;
+  }>(
+    `SELECT s.name AS spa_name, s.slug, s.address_line, s.city_name, s.state, s.postal_code, s.country_id
+     FROM spas s WHERE s.id = ?`,
+    [spaId]
+  );
+  if (!row) return null;
+  return { spaName: row.spa_name, slug: row.slug, address: clinicAddress(row) };
+}

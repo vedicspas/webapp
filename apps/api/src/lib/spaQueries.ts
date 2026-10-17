@@ -14,8 +14,8 @@ export interface SpaSummaryRow {
   cityName: string;
   addressLine: string;
   postalCode: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   paymentModeId: number;
   currencyId: number;
   coverPhotoUrl: string | null;
@@ -88,8 +88,8 @@ export function toSpaSummary(row: SpaSummaryRow, amenityIds: number[]): SpaSumma
     countryName: country?.name ?? "",
     addressLine: (row.addressLine || "").trim(),
     postalCode: (row.postalCode || "").trim(),
-    lat: Number(row.lat),
-    lng: Number(row.lng),
+    lat: row.lat == null || !Number.isFinite(Number(row.lat)) ? null : Number(row.lat),
+    lng: row.lng == null || !Number.isFinite(Number(row.lng)) ? null : Number(row.lng),
     coverPhotoUrl: publicPhotoUrl(row.coverPhotoUrl),
     ratingAvg: Number(row.ratingAvg),
     ratingCount: Number(row.ratingCount),

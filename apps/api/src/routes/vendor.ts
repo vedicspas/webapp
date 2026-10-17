@@ -185,6 +185,55 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
+  app.get("/vendor/claims", async (request, reply) => {
+    const vendor = await requireVendor(request, reply);
+    if (!vendor) return;
+    const rows = await query<{
+      id: number;
+      spa_id: number;
+      status: string;
+      contact_name: string;
+      contact_email: string;
+      contact_phone: string;
+      relationship: string;
+      notes: string | null;
+      document_path: string | null;
+      document_name: string | null;
+      otp_verified_at: Date | string | null;
+      submitted_at: Date | string | null;
+      rejection_note: string | null;
+      spa_name: string;
+      slug: string;
+      clinic_code: string;
+    }>(
+      `SELECT c.id, c.spa_id, c.status, c.contact_name, c.contact_email, c.contact_phone, c.relationship,
+         c.notes, c.document_path, c.document_name, c.otp_verified_at, c.submitted_at, c.rejection_note,
+         s.name AS spa_name, s.slug, s.clinic_code
+       FROM spa_claims c JOIN spas s ON s.id = c.spa_id
+       WHERE c.vendor_id = ?
+       ORDER BY c.created_at DESC`,
+      [vendor.id]
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      spaId: r.spa_id,
+      status: r.status,
+      contactName: r.contact_name,
+      contactEmail: r.contact_email,
+      contactPhone: r.contact_phone,
+      relationship: r.relationship,
+      notes: r.notes,
+      hasDocument: Boolean(r.document_path),
+      documentName: r.document_name,
+      otpVerified: Boolean(r.otp_verified_at),
+      submittedAt: r.submitted_at,
+      rejectionNote: r.rejection_note,
+      spaName: r.spa_name,
+      slug: r.slug,
+      clinicCode: r.clinic_code,
+    }));
+  });
+
   // ---- Stripe Connect Express onboarding ----
 
   app.post("/vendor/stripe/onboard", async (request, reply) => {

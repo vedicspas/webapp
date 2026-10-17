@@ -8,7 +8,7 @@ DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   contact_messages, site_settings,
   review_moderation_events, review_photos, review_responses, reviews, bookings, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
-  spa_accommodation_types, spas, vendors,
+  spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
   users, booking_statuses, payment_modes, treatment_categories, amenities,
   languages, dietary_options, accommodation_types,
   cities, countries, currencies, roles;
@@ -121,7 +121,8 @@ CREATE TABLE vendors (
 
 CREATE TABLE spas (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
-  vendor_id BIGINT UNSIGNED NOT NULL,
+  vendor_id BIGINT UNSIGNED NULL,
+  origin ENUM('vendor','admin','imported') NOT NULL DEFAULT 'vendor',
   clinic_code CHAR(6) NOT NULL UNIQUE, -- AA + 4 digits, e.g. AA0842
   slug VARCHAR(160) NOT NULL UNIQUE,
   name VARCHAR(160) NOT NULL,
@@ -133,8 +134,8 @@ CREATE TABLE spas (
   state VARCHAR(100) NOT NULL DEFAULT '',
   city_name VARCHAR(100) NOT NULL DEFAULT '',
   city_id INT UNSIGNED NULL,
-  lat DECIMAL(9,6) NOT NULL,
-  lng DECIMAL(9,6) NOT NULL,
+  lat DECIMAL(9,6) NULL,
+  lng DECIMAL(9,6) NULL,
   phone VARCHAR(32) NULL,
   email VARCHAR(255) NULL,
   website VARCHAR(500) NULL,
@@ -151,11 +152,77 @@ CREATE TABLE spas (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_spa_city (city_id),
   KEY idx_spa_geo (lat, lng),
+  KEY idx_spa_origin (origin),
   CONSTRAINT fk_spa_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id),
   CONSTRAINT fk_spa_country FOREIGN KEY (country_id) REFERENCES countries(id),
   CONSTRAINT fk_spa_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_spa_payment_mode FOREIGN KEY (payment_mode_id) REFERENCES payment_modes(id),
   CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_claims (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  vendor_id BIGINT UNSIGNED NOT NULL,
+  status ENUM('draft','pending','approved','rejected') NOT NULL DEFAULT 'draft',
+  contact_name VARCHAR(160) NOT NULL DEFAULT '',
+  contact_email VARCHAR(255) NOT NULL DEFAULT '',
+  contact_phone VARCHAR(32) NOT NULL DEFAULT '',
+  relationship VARCHAR(80) NOT NULL DEFAULT '',
+  notes TEXT NULL,
+  document_path VARCHAR(500) NULL,
+  document_name VARCHAR(255) NULL,
+  document_mime VARCHAR(80) NULL,
+  otp_verified_at DATETIME NULL,
+  submitted_at DATETIME NULL,
+  decided_at DATETIME NULL,
+  decided_by_user_id BIGINT UNSIGNED NULL,
+  rejection_note TEXT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_spa_claims_spa (spa_id, status),
+  KEY idx_spa_claims_vendor (vendor_id, status),
+  CONSTRAINT fk_spa_claim_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_spa_claim_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id),
+  CONSTRAINT fk_spa_claim_decided_by FOREIGN KEY (decided_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_claim_otps (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  claim_id BIGINT UNSIGNED NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  code CHAR(6) NOT NULL,
+  expires_at DATETIME NOT NULL,
+  consumed_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_claim_otps_claim (claim_id, created_at),
+  CONSTRAINT fk_claim_otp_claim FOREIGN KEY (claim_id) REFERENCES spa_claims(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_claim_notes (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  claim_id BIGINT UNSIGNED NOT NULL,
+  admin_user_id BIGINT UNSIGNED NOT NULL,
+  body TEXT NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_claim_notes_claim (claim_id, created_at),
+  CONSTRAINT fk_claim_note_claim FOREIGN KEY (claim_id) REFERENCES spa_claims(id) ON DELETE CASCADE,
+  CONSTRAINT fk_claim_note_admin FOREIGN KEY (admin_user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_inquiries (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(160) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  phone VARCHAR(32) NULL,
+  service ENUM('consultation','massage','general_enquiry') NULL,
+  timeframe ENUM('this_week','this_month','exploring') NULL,
+  share_consent TINYINT(1) NOT NULL DEFAULT 1,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_spa_inquiries_spa (spa_id, created_at),
+  KEY idx_spa_inquiries_email (email),
+  CONSTRAINT fk_spa_inquiry_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE spa_amenities (

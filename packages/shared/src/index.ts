@@ -148,8 +148,8 @@ export interface SpaSummary {
   countryName: string;
   addressLine: string;
   postalCode: string;
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   coverPhotoUrl: string | null;
   ratingAvg: number;
   ratingCount: number;
@@ -160,6 +160,8 @@ export interface SpaSummary {
 }
 
 export interface SpaDetail extends SpaSummary {
+  vendorId: number | null;
+  isUnclaimed: boolean;
   description: string;
   phone: string | null;
   email: string | null;

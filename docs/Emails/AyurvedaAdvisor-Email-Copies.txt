@@ -225,3 +225,107 @@ Warm regards,
 The AyurvedaAdvisor.com Team
 
 ======================================================================
+
+11. Email Purpose: Claim request received
+Target Recipient: Claimant
+Subject Line : We've received your claim request for {{ClinicName}}
+
+Hi {{FirstName}},
+
+Thank you for submitting a claim request for {{ClinicName}} on AyurvedaAdvisor.com.
+
+Our team will review your details to verify that you're authorised to represent the clinic. If we need any additional information or documents, we'll contact you by email.
+
+We'll notify you once the review is complete. Once approved, you'll be able to manage and update the clinic listing from your account.
+
+View clinic listing: {{ClinicListingUrl}}
+
+Thank you,
+The AyurvedaAdvisor Team
+
+-------------------------------------------------------------------------------
+12. Email Purpose: New claim request notification
+Target Recipient: Admin
+Subject Line : New claim request: {{ClinicName}}
+
+Hi Admin,
+
+A new claim request has been submitted for {{ClinicName}} on AyurvedaAdvisor.com.
+
+Clinic: {{ClinicName}}
+Address: {{ClinicAddress}}
+Claimant: {{ClaimantFullName}}
+Relationship to clinic: {{ClaimantRelationship}}
+Email: {{ClaimantEmail}}
+Phone: {{ClaimantPhone}}
+Submitted on: {{SubmittedDateTime}}
+
+Please review the claimant's details and supporting documents before approving or rejecting the request.
+
+Review claim: {{AdminClaimReviewUrl}}
+
+The claimant will receive management access only after approval.
+
+The AyurvedaAdvisor Team
+
+-------------------------------------------------------------------------------
+13. Email Purpose: Claim approved
+Target Recipient: Claimant
+Subject Line : Your claim for {{ClinicName}} has been approved
+
+Hi {{FirstName}},
+
+Your claim for {{ClinicName}} on AyurvedaAdvisor.com has been approved!
+
+You can now manage your clinic listing, update its details, and add photos from your account.
+
+Manage your clinic: {{ManageClinicUrl}}
+
+Thank you for joining AyurvedaAdvisor.
+
+The AyurvedaAdvisor Team
+
+-------------------------------------------------------------------------------
+14. Email Purpose: Claim rejected
+Target Recipient: Claimant
+Subject Line : Update on your claim for {{ClinicName}}
+
+Hi {{FirstName}},
+
+Thank you for requesting to manage {{ClinicName}} on AyurvedaAdvisor.com.
+
+After reviewing your submission, we're unable to approve your claim at this time.
+
+Review note: {{RejectionNote}}
+
+If you believe this decision was made in error or have additional information supporting your claim, please contact us at {{SupportEmail}}.
+
+View clinic listing: {{ClinicListingUrl}}
+
+The AyurvedaAdvisor Team
+
+-------------------------------------------------------------------------------
+15. Email Purpose: New patient interest
+Target Recipient: Admin
+Clinic name should be link to the listing page.
+
+Subject line: New patient interest: {{ClinicName}} — unclaimed listing
+Hi Admin,
+
+A visitor has expressed interest in an unclaimed clinic on AyurvedaAdvisor.com.
+
+Clinic: {{ClinicName}}
+Address: {{ClinicAddress}}
+Name: {{PatientName}}
+Email: {{PatientEmail}}
+Phone: {{PatientPhone}}
+Interested service: {{InterestedService}}
+Preferred visit timeframe: {{PreferredVisitTimeframe}}
+Consent to share enquiry with clinic after claim approval: {{SharingConsent}}
+Submitted on: {{SubmittedDateTime}}
+
+This enquiry has not been sent to the clinic, and no appointment has been booked.
+
+Review enquiry: {{AdminInquiryUrl}}
+
+The AyurvedaAdvisor Team

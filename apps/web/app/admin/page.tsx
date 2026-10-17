@@ -10,6 +10,7 @@ import { RatingStars } from "@/components/RatingStars";
 import { toast } from "@/stores/toastStore";
 import { PaginationBar } from "@/components/PaginationBar";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
+import { InquiryTable, type AdminInquiry } from "@/components/admin/InquiryTable";
 
 interface Stats {
   users: number;
@@ -23,6 +24,8 @@ interface Stats {
   platformFeesMinor: number;
   reviews: number;
   contactUnread: number;
+  claimsPending: number;
+  inquiries: number;
 }
 
 interface AdminVendor {
@@ -44,8 +47,12 @@ interface AdminSpa {
   clinicCode: string;
   cityName: string;
   isPublished: boolean;
-  vendorName: string;
-  vendorStatus: VendorStatus;
+  origin: "vendor" | "admin" | "imported";
+  vendorName: string | null;
+  vendorStatus: VendorStatus | null;
+  isUnclaimed: boolean;
+  pendingClaims: number;
+  inquiryCount: number;
 }
 
 interface AdminReview {
@@ -191,6 +198,9 @@ export default function AdminPage() {
   const [spas, setSpas] = useState<Paged<AdminSpa> | null>(null);
   const [reviews, setReviews] = useState<Paged<AdminReview> | null>(null);
   const [bookings, setBookings] = useState<Paged<AdminBooking> | null>(null);
+  const [inquiryPopup, setInquiryPopup] = useState<{ spaId: number; spaName: string } | null>(null);
+  const [inquiryItems, setInquiryItems] = useState<AdminInquiry[] | null>(null);
+  const [inquiryError, setInquiryError] = useState<string | null>(null);
 
   const isAdmin = session?.appUser?.role === "admin";
 
@@ -289,6 +299,19 @@ export default function AdminPage() {
       loadTab();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Update failed", "error");
+    }
+  }
+
+  async function openInquiries(spa: AdminSpa) {
+    setInquiryPopup({ spaId: spa.id, spaName: spa.name });
+    setInquiryItems(null);
+    setInquiryError(null);
+    try {
+      const data = await call<{ items: AdminInquiry[] }>(`/admin/inquiries?spaId=${spa.id}&pageSize=50`);
+      setInquiryItems(data.items);
+    } catch (err) {
+      setInquiryError(err instanceof Error ? err.message : "Could not load inquiries");
+      setInquiryItems([]);
     }
   }
 
@@ -419,6 +442,12 @@ export default function AdminPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-bold text-veda-900">Admin dashboard</h1>
         <div className="flex flex-wrap gap-4 text-sm">
+          <Link href="/admin/claims" className="text-veda-700 underline hover:text-veda-900">
+            Clinic claims{stats?.claimsPending ? ` (${stats.claimsPending})` : ""}
+          </Link>
+          <Link href="/admin/inquiries" className="text-veda-700 underline hover:text-veda-900">
+            Inquiries{stats?.inquiries ? ` (${stats.inquiries})` : ""}
+          </Link>
           <Link href="/admin/emails" className="text-veda-700 underline hover:text-veda-900">
             Emails
           </Link>
@@ -572,6 +601,14 @@ export default function AdminPage() {
 
       {tab === "spas" ? (
         <div className="mt-4">
+          <div className="mb-3 flex justify-end">
+            <Link
+              href="/admin/spas/new"
+              className="rounded-full bg-turmeric-400 px-4 py-1.5 text-sm font-semibold text-veda-900 hover:bg-turmeric-300"
+            >
+              Add a clinic
+            </Link>
+          </div>
           {clinicFilters}
           <div className="mt-4 space-y-3">
             {(spas?.items ?? []).map((s) => (
@@ -584,10 +621,44 @@ export default function AdminPage() {
                     {s.name}
                   </Link>
                   <p className="text-sm text-foreground/60">
-                    Clinic ID {s.clinicCode} &middot; {s.cityName} &middot; {s.vendorName}{" "}
-                    <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[s.vendorStatus]}`}>
-                      {s.vendorStatus}
-                    </span>
+                    Clinic ID {s.clinicCode} &middot; {s.cityName}
+                    {s.isUnclaimed ? (
+                      <>
+                        {" "}
+                        &middot;{" "}
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+                          Unclaimed
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {" "}
+                        &middot; {s.vendorName}{" "}
+                        {s.vendorStatus ? (
+                          <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[s.vendorStatus]}`}>
+                            {s.vendorStatus}
+                          </span>
+                        ) : null}
+                      </>
+                    )}
+                    {s.pendingClaims > 0 ? (
+                      <>
+                        {" "}
+                        &middot;{" "}
+                        <Link href={`/admin/claims?spaId=${s.id}`} className="text-veda-700 underline">
+                          {s.pendingClaims} claim{s.pendingClaims === 1 ? "" : "s"}
+                        </Link>
+                      </>
+                    ) : null}
+                    {" "}
+                    &middot;{" "}
+                    <button
+                      type="button"
+                      className="text-veda-700 underline"
+                      onClick={() => void openInquiries(s)}
+                    >
+                      Inquiries ({s.inquiryCount})
+                    </button>
                   </p>
                 </div>
                 <button
@@ -826,6 +897,46 @@ export default function AdminPage() {
               setPage(1);
             }}
           />
+        </div>
+      ) : null}
+
+      {inquiryPopup ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            aria-label="Dismiss"
+            className="absolute inset-0 bg-veda-950/55"
+            onClick={() => setInquiryPopup(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Inquiries for ${inquiryPopup.spaName}`}
+            className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-veda-900">{inquiryPopup.spaName}</h2>
+                <p className="text-sm text-foreground/60">Inquiries ({inquiryItems?.length ?? "…"})</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                className="grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-foreground/45 hover:bg-veda-50"
+                onClick={() => setInquiryPopup(null)}
+              >
+                &times;
+              </button>
+            </div>
+            {inquiryError ? <p className="mt-3 text-sm text-red-600">{inquiryError}</p> : null}
+            <div className="mt-4">
+              {inquiryItems ? (
+                <InquiryTable items={inquiryItems} showClinic={false} />
+              ) : (
+                <p className="text-sm text-foreground/50">Loading…</p>
+              )}
+            </div>
+          </div>
         </div>
       ) : null}
     </div>

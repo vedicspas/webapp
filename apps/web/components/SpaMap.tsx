@@ -16,13 +16,16 @@ const pin = L.divIcon({
 });
 
 export default function SpaMap({ spas }: { spas: SpaSummary[] }) {
+  const pinned = spas.filter(
+    (s) => s.lat != null && s.lng != null && Number.isFinite(s.lat) && Number.isFinite(s.lng)
+  );
   const center: [number, number] =
-    spas.length > 0 ? [spas[0].lat, spas[0].lng] : [20, 78];
+    pinned.length > 0 ? [pinned[0].lat as number, pinned[0].lng as number] : [20, 78];
 
   return (
     <MapContainer
       center={center}
-      zoom={spas.length === 1 ? 12 : 3}
+      zoom={pinned.length === 1 ? 12 : 3}
       className="h-full w-full rounded-2xl"
       scrollWheelZoom
     >
@@ -30,8 +33,8 @@ export default function SpaMap({ spas }: { spas: SpaSummary[] }) {
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {spas.map((spa) => (
-        <Marker key={spa.id} position={[spa.lat, spa.lng]} icon={pin}>
+      {pinned.map((spa) => (
+        <Marker key={spa.id} position={[spa.lat as number, spa.lng as number]} icon={pin}>
           <Popup>
             <Link href={`/spas/${spa.slug}`} className="font-medium text-veda-800 underline">
               {spa.name}

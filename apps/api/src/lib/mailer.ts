@@ -16,6 +16,12 @@ export const EMAIL_TYPES = [
   "clinic_question",
   "clinic_approved",
   "contact_notification",
+  "claim_otp",
+  "claim_received",
+  "claim_admin_notice",
+  "claim_approved",
+  "claim_rejected",
+  "patient_interest",
 ] as const;
 
 export type EmailType = (typeof EMAIL_TYPES)[number];
@@ -33,9 +39,15 @@ export const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
   clinic_question: "New clinic question",
   clinic_approved: "Clinic approved",
   contact_notification: "Contact form",
+  claim_otp: "Claim verification code",
+  claim_received: "Claim request received",
+  claim_admin_notice: "New claim request",
+  claim_approved: "Claim approved",
+  claim_rejected: "Claim rejected",
+  patient_interest: "New patient interest",
 };
 
-const SECURITY_TYPES: EmailType[] = ["password_reset", "password_updated"];
+const SECURITY_TYPES: EmailType[] = ["password_reset", "password_updated", "claim_otp"];
 const ONCE_PER_DAY: EmailType[] = ["reply_notice"];
 const secret = new TextEncoder().encode(config.authSecret);
 
@@ -105,7 +117,16 @@ function escapeHtml(value: string): string {
 }
 
 function nlHtml(value: string): string {
-  return escapeHtml(value).replace(/\n/g, "<br>");
+  return escapeHtml(value)
+    .replace(/\n/g, "<br>")
+    .replace(
+      /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+      '<a href="$2" style="color:#1a73e8;text-decoration:underline;">$1</a>'
+    );
+}
+
+function stripMarkdownLinks(value: string): string {
+  return value.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1 ($2)");
 }
 
 export function renderEmail(opts: {
@@ -146,7 +167,7 @@ export function renderEmail(opts: {
   </table>
 </body></html>`;
 
-  const textParts = [greeting, "", ...opts.paragraphs, ""];
+  const textParts = [greeting, "", ...opts.paragraphs.map(stripMarkdownLinks), ""];
   if (opts.actionLabel && opts.actionUrl) {
     textParts.push(`${opts.actionLabel}:`, opts.actionUrl, "");
   }

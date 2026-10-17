@@ -14,6 +14,9 @@ import { WEEKDAYS, formatSpaAddress, formatSpaLocality, money } from "@/lib/form
 import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { SpaLocationLink, SpaLocationPreview, SpaLocationProvider } from "@/components/spa/SpaLocation";
 import { ShareListing } from "@/components/spa/ShareListing";
+import { ClaimClinicControl, ClaimUiProvider } from "@/components/spa/ClaimClinicLightbox";
+import { UnclaimedListingAside } from "@/components/spa/ExpressInterestCard";
+import { WishlistButton } from "@/components/WishlistButton";
 
 // Booking inventory (treatments) must not stay stale after a vendor deletes one.
 export const dynamic = "force-dynamic";
@@ -57,23 +60,30 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
   ]);
   const address = formatSpaAddress(spa);
   const loc =
-    Number.isFinite(Number(spa.lat)) && Number.isFinite(Number(spa.lng))
-      ? { name: spa.name, address, lat: Number(spa.lat), lng: Number(spa.lng) }
+    spa.lat != null &&
+    spa.lng != null &&
+    Number.isFinite(spa.lat) &&
+    Number.isFinite(spa.lng)
+      ? { name: spa.name, address, lat: spa.lat, lng: spa.lng }
       : null;
 
-  return (
-    <SpaLocationProvider loc={loc}>
+  const inner = (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
+      {spa.photos.length > 0 ? (
+        <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
+      ) : null}
 
-      <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
+      <div className={`grid gap-8 lg:grid-cols-[1fr_380px] ${spa.photos.length > 0 ? "mt-6" : ""}`}>
         <div className="min-w-0">
           <p className="text-sm uppercase tracking-wide text-veda-500">
             {formatSpaLocality(spa)}
           </p>
           <div className="mt-1 flex items-start justify-between gap-3">
             <h1 className="min-w-0 text-2xl font-bold text-veda-900 sm:text-3xl">{spa.name}</h1>
-            <ShareListing title={spa.name} text={spa.shortDescription} path={`/spas/${spa.slug}`} />
+            <div className="flex shrink-0 items-center gap-1">
+              {spa.photos.length === 0 ? <WishlistButton spaId={spa.id} className="shadow-none" /> : null}
+              <ShareListing title={spa.name} text={spa.shortDescription} path={`/spas/${spa.slug}`} />
+            </div>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
             <RatingStars rating={spa.ratingAvg} count={spa.ratingCount} size="lg" />
@@ -84,6 +94,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
               </span>
             ) : null}
           </div>
+          {spa.isUnclaimed ? <ClaimClinicControl /> : null}
 
           <p className="mt-5 whitespace-pre-line leading-relaxed text-foreground/85">
             {spa.description}
@@ -141,11 +152,26 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
           <SpaLocationPreview />
         </div>
 
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <BookingWidget spa={spa} />
-        </aside>
+        {spa.isUnclaimed ? (
+          <UnclaimedListingAside slug={spa.slug} />
+        ) : (
+          <aside className="lg:sticky lg:top-20 lg:self-start">
+            <BookingWidget spa={spa} />
+          </aside>
+        )}
       </div>
     </div>
+  );
+
+  return (
+    <SpaLocationProvider loc={loc}>
+      {spa.isUnclaimed ? (
+        <ClaimUiProvider slug={spa.slug} clinicName={spa.name} clinicAddress={address}>
+          {inner}
+        </ClaimUiProvider>
+      ) : (
+        inner
+      )}
     </SpaLocationProvider>
   );
 }

@@ -24,9 +24,19 @@ interface VendorMe {
   }[];
 }
 
+interface VendorClaim {
+  id: number;
+  spaName: string;
+  slug: string;
+  clinicCode: string;
+  status: "draft" | "pending" | "approved" | "rejected";
+  rejectionNote: string | null;
+}
+
 export default function VendorDashboardPage() {
   const { call, token, authStatus } = useApi();
   const [me, setMe] = useState<VendorMe | null>(null);
+  const [claims, setClaims] = useState<VendorClaim[]>([]);
   const [notVendor, setNotVendor] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -36,6 +46,9 @@ export default function VendorDashboardPage() {
       .catch((err: Error) => {
         if (err.message.includes("Vendor account")) setNotVendor(true);
       });
+    call<VendorClaim[]>("/vendor/claims")
+      .then(setClaims)
+      .catch(() => setClaims([]));
   }, [call]);
 
   useEffect(() => {
@@ -140,6 +153,26 @@ export default function VendorDashboardPage() {
           </>
         )}
       </section>
+
+      {claims.length > 0 ? (
+        <section className="mt-6">
+          <h2 className="mb-3 font-semibold text-veda-900">Clinic claims</h2>
+          <div className="space-y-3">
+            {claims.map((c) => (
+              <div key={c.id} className="rounded-2xl border border-veda-100 bg-white p-4">
+                <p className="font-medium text-veda-900">{c.spaName}</p>
+                <p className="text-sm text-foreground/60">
+                  {c.clinicCode} · {c.status}
+                  {c.status === "rejected" && c.rejectionNote ? ` — ${c.rejectionNote}` : ""}
+                </p>
+                <Link href={`/spas/${c.slug}`} className="mt-2 inline-block text-sm text-veda-700 underline">
+                  View listing
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

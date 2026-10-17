@@ -146,6 +146,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
 
     let distanceSelect = "";
     if (params.lat !== undefined && params.lng !== undefined) {
+      where.push("s.lat IS NOT NULL AND s.lng IS NOT NULL");
       // Haversine distance in km
       distanceSelect = `, (6371 * ACOS(LEAST(1, COS(RADIANS(?)) * COS(RADIANS(s.lat)) * COS(RADIANS(s.lng) - RADIANS(?)) + SIN(RADIANS(?)) * SIN(RADIANS(s.lat))))) AS distanceKm`;
       args.unshift(params.lat, params.lng, params.lat);
@@ -230,6 +231,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
 
     const row = await queryOne<
       SpaSummaryRow & {
+        vendorId: number | null;
         description: string;
         phone: string | null;
         email: string | null;
@@ -242,6 +244,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       `${SPA_SUMMARY_SELECT.replace(
         "t.min_price AS priceFromMinor",
         `t.min_price AS priceFromMinor,
+         s.vendor_id AS vendorId,
          s.description,
          s.phone, s.email, s.website, s.shopify_collection_handle AS shopifyCollectionHandle,
          s.deposit_bps AS depositBps, s.booking_fee_minor AS bookingFeeMinor`
@@ -270,8 +273,11 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       loadSpaStay(row.id),
     ]);
 
+    const vendorId = row.vendorId == null ? null : Number(row.vendorId);
     const detail: SpaDetail = {
       ...toSpaSummary(row, amenities.get(row.id) ?? []),
+      vendorId,
+      isUnclaimed: vendorId == null,
       description: row.description,
       phone: row.phone,
       email: row.email,

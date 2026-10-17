@@ -6,6 +6,10 @@ import { requireAuth } from "../plugins/auth.js";
 import { assertCanModerate } from "../lib/reviewValidation.js";
 import { EMAIL_TYPE_LABELS, type EmailType } from "../lib/mailer.js";
 import { notifySpaOwnerForPublish } from "../lib/notify.js";
+import { uniqueSlug } from "../lib/spaSlug.js";
+import { allocateClinicCode } from "../lib/bookingRefs.js";
+import { adminClaimRoutes } from "./claims.js";
+import { adminInquiryRoutes } from "./inquiries.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -73,7 +77,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
           )) AS grossBookingMinor,
         (SELECT COALESCE(SUM(platform_fee_minor), 0) FROM bookings WHERE paid_minor > 0) AS platformFeesMinor,
         (SELECT COUNT(*) FROM reviews) AS reviews,
-        (SELECT COUNT(*) FROM contact_messages WHERE is_read = 0) AS contactUnread
+        (SELECT COUNT(*) FROM contact_messages WHERE is_read = 0) AS contactUnread,
+        (SELECT COUNT(*) FROM spa_claims WHERE status = 'pending') AS claimsPending,
+        (SELECT COUNT(*) FROM spa_inquiries) AS inquiries
     `);
     return row;
   });
@@ -174,7 +180,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     }
     const whereSql = where.join(" AND ");
     const totalRow = await queryOne<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM spas s JOIN vendors v ON v.id = s.vendor_id WHERE ${whereSql}`,
+      `SELECT COUNT(*) AS n FROM spas s LEFT JOIN vendors v ON v.id = s.vendor_id WHERE ${whereSql}`,
       values
     );
     const rows = await query<{
@@ -185,13 +191,18 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       city_id: number | null;
       city_name: string;
       is_published: number;
-      vendor_id: number;
-      business_name: string;
-      vendor_status: string;
+      origin: "vendor" | "admin" | "imported";
+      vendor_id: number | null;
+      business_name: string | null;
+      vendor_status: string | null;
+      pending_claims: number;
+      inquiry_count: number;
     }>(
-      `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published,
-         v.id AS vendor_id, v.business_name, v.status AS vendor_status
-       FROM spas s JOIN vendors v ON v.id = s.vendor_id
+      `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published, s.origin,
+         v.id AS vendor_id, v.business_name, v.status AS vendor_status,
+         (SELECT COUNT(*) FROM spa_claims c WHERE c.spa_id = s.id AND c.status = 'pending') AS pending_claims,
+         (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count
+       FROM spas s LEFT JOIN vendors v ON v.id = s.vendor_id
        WHERE ${whereSql}
        ORDER BY s.created_at DESC
        LIMIT ${pageSize} OFFSET ${offset}`,
@@ -205,9 +216,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         clinicCode: r.clinic_code,
         cityName: r.city_name || staticCache.city(r.city_id ?? 0)?.name || "",
         isPublished: Boolean(r.is_published),
+        origin: r.origin,
         vendorId: r.vendor_id,
         vendorName: r.business_name,
         vendorStatus: r.vendor_status,
+        isUnclaimed: r.vendor_id == null,
+        pendingClaims: Number(r.pending_claims ?? 0),
+        inquiryCount: Number(r.inquiry_count ?? 0),
       })),
       categories: allCategories(),
       page,
@@ -221,12 +236,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const body = z.object({ isPublished: z.boolean() }).parse(request.body);
 
     if (body.isPublished) {
-      const spa = await queryOne<{ status: string }>(
-        "SELECT v.status FROM spas s JOIN vendors v ON v.id = s.vendor_id WHERE s.id = ?",
+      const spa = await queryOne<{ vendor_id: number | null; status: string | null }>(
+        "SELECT s.vendor_id, v.status FROM spas s LEFT JOIN vendors v ON v.id = s.vendor_id WHERE s.id = ?",
         [spaId]
       );
       if (!spa) return reply.code(404).send({ error: "Spa not found" });
-      if (spa.status !== "approved") {
+      if (spa.vendor_id != null && spa.status !== "approved") {
         return reply.code(409).send({ error: "Vendor is not approved" });
       }
     }
@@ -676,4 +691,76 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     await staticCache.reload();
     return { ok: true };
   });
+
+  const adminSpaBody = z.object({
+    name: z.string().trim().min(3).max(160),
+    shortDescription: z.string().trim().min(1).max(300),
+    description: z.string().trim().min(1),
+    addressLine: z.string().trim().min(1).max(255),
+    postalCode: z.string().trim().max(20).optional().default(""),
+    countryId: z.number().int().positive().nullable().optional(),
+    state: z.string().trim().max(100).optional().default(""),
+    cityName: z.string().trim().max(100).optional().default(""),
+    lat: z.number().min(-90).max(90).nullable().optional(),
+    lng: z.number().min(-180).max(180).nullable().optional(),
+    phone: z.string().trim().max(32).nullable().optional(),
+    email: z.union([z.string().email(), z.literal("")]).nullable().optional(),
+    website: z.union([z.string().url(), z.literal("")]).nullable().optional(),
+    isPublished: z.boolean().optional().default(true),
+  });
+
+  app.post("/admin/spas", async (request, reply) => {
+    const body = adminSpaBody.parse(request.body);
+    if (body.countryId && !staticCache.country(body.countryId)) {
+      return reply.code(400).send({ error: "Unknown country" });
+    }
+    const cityId =
+      body.countryId && body.cityName
+        ? staticCache.cities.find(
+            (c) => c.countryId === body.countryId && c.name.toLowerCase() === body.cityName.trim().toLowerCase()
+          )?.id ?? null
+        : null;
+    const payAtSpa = staticCache.paymentModeByCode("pay_at_spa");
+    const usd = staticCache.currencies.find((c) => c.code === "USD");
+    if (!payAtSpa || !usd) return reply.code(500).send({ error: "Missing payment or currency lookup" });
+
+    const slug = await uniqueSlug(body.name);
+    const clinicCode = await allocateClinicCode();
+    const email = body.email?.trim() ? body.email.trim() : null;
+    const website = body.website?.trim() ? body.website.trim() : null;
+    const result = await execute(
+      `INSERT INTO spas
+        (vendor_id, origin, clinic_code, slug, name, short_description, description, address_line, postal_code,
+         country_id, state, city_name, city_id, lat, lng, phone, email, website,
+         payment_mode_id, currency_id, is_published)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [
+        null,
+        "admin",
+        clinicCode,
+        slug,
+        body.name,
+        body.shortDescription,
+        body.description,
+        body.addressLine,
+        body.postalCode ?? "",
+        body.countryId ?? null,
+        body.state ?? "",
+        body.cityName ?? "",
+        cityId,
+        body.lat ?? null,
+        body.lng ?? null,
+        body.phone?.trim() || null,
+        email,
+        website,
+        payAtSpa.id,
+        usd.id,
+        body.isPublished ? 1 : 0,
+      ]
+    );
+    return reply.code(201).send({ id: result.insertId, slug, clinicCode });
+  });
+
+  await adminClaimRoutes(app);
+  await adminInquiryRoutes(app);
 }
