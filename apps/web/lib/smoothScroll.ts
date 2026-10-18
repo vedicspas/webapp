@@ -1,6 +1,13 @@
 /** Slow in-page scroll without touching the URL hash. */
 export function easeScrollTo(el: HTMLElement, duration = 850): void {
-  const headerOffset = 88;
+  const listing = document.querySelector("[data-listing-nav]");
+  const header = document.querySelector("header");
+  const headerOffset =
+    listing instanceof HTMLElement
+      ? listing.getBoundingClientRect().height + 10
+      : header instanceof HTMLElement && header.offsetParent !== null
+        ? header.getBoundingClientRect().height + 8
+        : 88;
   const target = el.getBoundingClientRect().top + window.scrollY - headerOffset;
   const start = window.scrollY;
   const change = target - start;

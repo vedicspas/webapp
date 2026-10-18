@@ -562,15 +562,25 @@ export function ReviewsSection({ slug, initial }: { slug: string; initial: Revie
   }
 
   return (
-    <section className="mt-10">
+    <section id="listing-reviews" className="mt-10 scroll-mt-16">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-veda-900">Reviews ({summary.ratingCount})</h2>
         <button
           type="button"
           onClick={() => setShowForm((v) => !v)}
-          className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+          className="inline-flex items-center gap-1.5 rounded-full border border-veda-300 px-4 py-1.5 text-sm font-bold text-veda-800 hover:bg-veda-50"
         >
-          {showForm ? "Cancel" : "Write a review"}
+          {showForm ? (
+            "Cancel"
+          ) : (
+            <>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden>
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+              </svg>
+              Write a review
+            </>
+          )}
         </button>
       </div>
 

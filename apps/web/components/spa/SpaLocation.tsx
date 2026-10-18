@@ -71,7 +71,7 @@ export function SpaLocationPreview() {
   const ctx = useContext(LocationCtx);
   if (!ctx) return null;
   return (
-    <section className="mt-10">
+    <section id="listing-location" className="mt-10 scroll-mt-16">
       <h2 className="text-lg font-semibold text-veda-900">Location</h2>
       <p className="mt-1 text-sm text-foreground/60">{ctx.loc.address}</p>
       <div className="mt-3">

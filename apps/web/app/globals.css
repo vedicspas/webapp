@@ -37,6 +37,15 @@
   --color-turmeric-900: #6c3718;
 }
 
+.listing-nav-active {
+  --listing-sticky-top: 3.25rem;
+}
+@media (min-width: 640px) {
+  .listing-nav-active {
+    --listing-sticky-top: 3.75rem;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

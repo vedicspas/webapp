@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { signOutAndGo } from "@/lib/signOut";
 import { UserAvatar } from "@/components/UserAvatar";
+import { useListingNavStore } from "@/stores/listingNavStore";
 
 const NAV = [
   { href: "/spas", label: "Find a spa" },
@@ -15,11 +16,21 @@ const NAV = [
 export function Header() {
   const { data: session, status } = useSession();
   const [open, setOpen] = useState(false);
+  const listingNav = useListingNavStore((s) => s.active);
   const user = session?.appUser;
   const sessionReady = status !== "loading";
 
+  useEffect(() => {
+    if (listingNav) setOpen(false);
+  }, [listingNav]);
+
   return (
-    <header className="sticky top-0 z-40 bg-veda-800 text-white shadow-md">
+    <header
+      className={`sticky top-0 z-40 bg-veda-800 text-white shadow-md ${
+        listingNav ? "invisible pointer-events-none" : ""
+      }`}
+      aria-hidden={listingNav}
+    >
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
         <Link href="/" className="flex shrink-0 items-center" aria-label="AyurvedaAdvisor home">
           <img src="/logo-ayurvedaadvisor.svg" alt="AyurvedaAdvisor" className="h-8 w-auto sm:h-12" />

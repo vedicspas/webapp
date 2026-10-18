@@ -17,6 +17,7 @@ import { ShareListing } from "@/components/spa/ShareListing";
 import { ClaimClinicControl, ClaimUiProvider } from "@/components/spa/ClaimClinicLightbox";
 import { UnclaimedListingAside } from "@/components/spa/ExpressInterestCard";
 import { WishlistButton } from "@/components/WishlistButton";
+import { ListingStickyNav } from "@/components/spa/ListingStickyNav";
 
 // Booking inventory (treatments) must not stay stale after a vendor deletes one.
 export const dynamic = "force-dynamic";
@@ -67,14 +68,26 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
       ? { name: spa.name, address, lat: spa.lat, lng: spa.lng }
       : null;
 
+  const hasStay = Boolean(
+    (spa.languages?.length ?? 0) > 0 ||
+      (spa.dietaryOptions?.length ?? 0) > 0 ||
+      spa.airportPickup ||
+      spa.familyAccommodation ||
+      spa.accessibility ||
+      spa.accommodationOther?.trim() ||
+      (spa.accommodationTypes?.length ?? 0) > 0
+  );
+  const showAmenities = spa.amenityIds.length > 0 || hasStay;
+
   const inner = (
     <div className="mx-auto max-w-6xl px-4 py-6">
-      {spa.photos.length > 0 ? (
-        <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
-      ) : null}
-
-      <div className={`grid gap-8 lg:grid-cols-[1fr_380px] ${spa.photos.length > 0 ? "mt-6" : ""}`}>
-        <div className="min-w-0">
+      <ListingStickyNav
+        clinicName={spa.name}
+        showAmenities={showAmenities}
+        showLocation={Boolean(loc)}
+        showBooking={!spa.isUnclaimed}
+      >
+        <div>
           <p className="text-sm uppercase tracking-wide text-veda-500">
             {formatSpaLocality(spa)}
           </p>
@@ -95,38 +108,56 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
             ) : null}
           </div>
           {spa.isUnclaimed ? <ClaimClinicControl /> : null}
+        </div>
+      </ListingStickyNav>
 
-          <p className="mt-5 whitespace-pre-line leading-relaxed text-foreground/85">
-            {spa.description}
-          </p>
+      {spa.photos.length > 0 ? (
+        <div className="mt-5">
+          <PhotoGallery photos={spa.photos} spaName={spa.name} spaId={spa.id} />
+        </div>
+      ) : null}
 
-          {spa.amenityIds.length > 0 ? (
-            <>
-              <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
-              <AmenityList amenityIds={spa.amenityIds} />
-            </>
+      <div className="mt-6 grid gap-8 lg:grid-cols-[1fr_380px]">
+        <div className="min-w-0">
+          <section id="listing-about" className="scroll-mt-16">
+            <h2 className="text-lg font-semibold text-veda-900">About this clinic</h2>
+            <p className="mt-3 whitespace-pre-line leading-relaxed text-foreground/85">
+              {spa.description}
+            </p>
+          </section>
+
+          {showAmenities ? (
+            <div id="listing-amenities" className="scroll-mt-16">
+              {spa.amenityIds.length > 0 ? (
+                <>
+                  <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
+                  <AmenityList amenityIds={spa.amenityIds} />
+                </>
+              ) : null}
+              <StayDetails spa={spa} />
+            </div>
           ) : null}
 
-          <StayDetails spa={spa} />
-
-          <h2 className="mt-8 text-lg font-semibold text-veda-900">Treatments</h2>
-          <ul className="mt-2 space-y-2">
-            {spa.treatments.map((t) => (
-              <li key={t.id} className="rounded-xl border border-veda-100 bg-white px-4 py-3">
-                <p className="font-medium text-veda-900">
-                  <TreatmentCaption name={t.name} categoryName={t.categoryName} />
-                </p>
-                <p className="mt-0.5 text-sm text-foreground/60">
-                  {money(t.priceMinor, spa.currencyCode)}
-                  {t.kind === "session" && t.durationMinutes ? ` · ${t.durationMinutes} min` : null}
-                  {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : null}
-                </p>
-              </li>
-            ))}
-            {spa.treatments.length === 0 ? (
-              <li className="text-sm text-foreground/60">No treatments listed yet.</li>
-            ) : null}
-          </ul>
+          <section id="listing-treatments" className="scroll-mt-16">
+            <h2 className="mt-8 text-lg font-semibold text-veda-900">Treatments</h2>
+            <ul className="mt-2 space-y-2">
+              {spa.treatments.map((t) => (
+                <li key={t.id} className="rounded-xl border border-veda-100 bg-white px-4 py-3">
+                  <p className="font-medium text-veda-900">
+                    <TreatmentCaption name={t.name} categoryName={t.categoryName} />
+                  </p>
+                  <p className="mt-0.5 text-sm text-foreground/60">
+                    {money(t.priceMinor, spa.currencyCode)}
+                    {t.kind === "session" && t.durationMinutes ? ` · ${t.durationMinutes} min` : null}
+                    {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : null}
+                  </p>
+                </li>
+              ))}
+              {spa.treatments.length === 0 ? (
+                <li className="text-sm text-foreground/60">No treatments listed yet.</li>
+              ) : null}
+            </ul>
+          </section>
 
           <h2 className="mt-8 text-lg font-semibold text-veda-900">Opening hours</h2>
           <ul className="mt-2 grid max-w-md grid-cols-1 gap-1 text-sm sm:grid-cols-2">
@@ -146,7 +177,6 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
             handle={spa.shopifyCollectionHandle}
           />
 
-
           <ReviewsSection slug={spa.slug} initial={reviews} />
           <QASection slug={spa.slug} initial={questions} />
           <SpaLocationPreview />
@@ -155,7 +185,10 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
         {spa.isUnclaimed ? (
           <UnclaimedListingAside slug={spa.slug} />
         ) : (
-          <aside className="lg:sticky lg:top-20 lg:self-start">
+          <aside
+            id="listing-booking"
+            className="scroll-mt-16 lg:sticky lg:top-[var(--listing-sticky-top,5rem)] lg:self-start"
+          >
             <BookingWidget spa={spa} />
           </aside>
         )}
