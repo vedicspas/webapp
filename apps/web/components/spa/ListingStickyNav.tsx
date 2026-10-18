@@ -115,7 +115,7 @@ export function ListingStickyNav({
                 className="h-6 w-auto sm:h-8"
               />
             </Link>
-            <p className="min-w-0 max-w-[9.5rem] shrink-0 truncate text-base font-semibold sm:max-w-[14rem] sm:text-lg md:max-w-[16rem]">
+            <p className="min-w-0 max-w-[9.5rem] shrink-0 truncate text-base font-normal text-[#f4f4b6] sm:max-w-[14rem] md:max-w-[16rem]">
               {clinicName}
             </p>
             <span className="mx-3 shrink-0 text-white/45" aria-hidden>
