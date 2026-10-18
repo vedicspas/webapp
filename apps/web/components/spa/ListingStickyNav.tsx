@@ -101,12 +101,12 @@ export function ListingStickyNav({
       {visible ? (
         <div
           data-listing-nav
-          className="fixed inset-x-0 top-0 z-50 bg-[#1e6c41] text-white shadow-md"
+          className="fixed inset-x-0 top-0 z-50 bg-veda-800 text-white shadow-md"
         >
-          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2">
+          <div className="mx-auto flex max-w-6xl items-center px-4 py-2">
             <Link
               href="/"
-              className="hidden shrink-0 items-center md:flex"
+              className="mr-3 hidden shrink-0 items-center md:flex"
               aria-label="AyurvedaAdvisor home"
             >
               <img
@@ -118,6 +118,9 @@ export function ListingStickyNav({
             <p className="min-w-0 max-w-[9.5rem] shrink-0 truncate text-base font-semibold sm:max-w-[14rem] sm:text-lg md:max-w-[16rem]">
               {clinicName}
             </p>
+            <span className="mx-3 shrink-0 text-white/45" aria-hidden>
+              |
+            </span>
             <nav
               className="flex min-w-0 flex-1 flex-nowrap items-center gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
               aria-label="Listing sections"
@@ -127,9 +130,9 @@ export function ListingStickyNav({
                   key={tab.id}
                   type="button"
                   onClick={() => go(tab.id)}
-                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap md:text-[15.4px] ${
+                  className={`shrink-0 rounded-full px-3 py-1 text-sm font-medium whitespace-nowrap ${
                     current === tab.id
-                      ? "bg-white text-[#1e6c41]"
+                      ? "bg-white text-veda-800"
                       : "text-white/90 hover:bg-white/15 hover:text-white"
                   }`}
                 >
