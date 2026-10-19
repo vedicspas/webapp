@@ -11,6 +11,7 @@ import { toast } from "@/stores/toastStore";
 import { PaginationBar } from "@/components/PaginationBar";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { InquiryTable, type AdminInquiry } from "@/components/admin/InquiryTable";
+import { DateField } from "@/components/DateField";
 
 interface Stats {
   users: number;
@@ -406,11 +407,11 @@ export default function AdminPage() {
         </label>
         <label className={label}>
           From date
-          <input type="date" className={input} value={from} onChange={(e) => setFrom(e.target.value)} />
+          <DateField value={from} allowEmpty onChange={setFrom} />
         </label>
         <label className={label}>
           To date
-          <input type="date" className={input} value={to} onChange={(e) => setTo(e.target.value)} />
+          <DateField value={to} allowEmpty minDate={from ? new Date(from + "T00:00:00") : undefined} onChange={setTo} />
         </label>
       </div>
       <CategoryChips categories={categories} selected={categoryIds} onChange={setCategoryIds} />
@@ -522,11 +523,11 @@ export default function AdminPage() {
               </label>
               <label className={label}>
                 From date
-                <input type="date" className={input} value={vendorFrom} onChange={(e) => setVendorFrom(e.target.value)} />
+                <DateField value={vendorFrom} allowEmpty onChange={setVendorFrom} />
               </label>
               <label className={label}>
                 To date
-                <input type="date" className={input} value={vendorTo} onChange={(e) => setVendorTo(e.target.value)} />
+                <DateField value={vendorTo} allowEmpty minDate={vendorFrom ? new Date(vendorFrom + "T00:00:00") : undefined} onChange={setVendorTo} />
               </label>
             </div>
             <div className="flex flex-wrap justify-center gap-3">

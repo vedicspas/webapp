@@ -90,12 +90,14 @@ export function notifyPasswordUpdated(to: string, name: string): Promise<void> {
     sendTransactional({
       type: "password_updated",
       to,
-      subject: "Your password has been updated",
+      subject: "Your AyurvedaAdvisor.com password has been changed",
       firstName: firstName(name, to),
       paragraphs: [
-        "Your AyurvedaAdvisor.com password has been changed successfully.",
+        "Your password has been changed successfully. You can now sign in to AyurvedaAdvisor.com using your new password.",
         `If you didn’t make this change, please contact us immediately at ${supportEmail()}.`,
       ],
+      actionLabel: "Sign In",
+      actionUrl: siteUrl("/auth/signin"),
     })
   );
 }

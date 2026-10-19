@@ -14,6 +14,7 @@ import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay } from "@/lib/format";
 import { toast } from "@/stores/toastStore";
 import { PaymentForm } from "./PaymentForm";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
+import { DateField } from "@/components/DateField";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
@@ -207,19 +208,17 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       <>
       {treatment?.kind === "session" ? (
         <>
-          <label className="mt-3 block text-sm font-medium">
-            Date
-            <input
-              type="date"
+          <div className="mt-3">
+            <p className="text-sm font-medium">Date</p>
+            <DateField
               value={date}
-              min={new Date().toISOString().slice(0, 10)}
-              onChange={(e) => {
-                setDate(e.target.value);
+              minDate="today"
+              onChange={(next) => {
+                setDate(next);
                 setSelectedStart(null);
               }}
-              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
             />
-          </label>
+          </div>
           {date ? (
             <div className="mt-3">
               <p className="text-sm font-medium">Available times (spa local time)</p>

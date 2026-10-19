@@ -8,6 +8,7 @@ import { PaginationBar } from "@/components/PaginationBar";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { toast } from "@/stores/toastStore";
 import { shortDate, timeOfDay } from "@/lib/format";
+import { DateField } from "@/components/DateField";
 
 interface EmailListItem {
   id: number;
@@ -172,11 +173,11 @@ export default function AdminEmailsPage() {
           </label>
           <label className={label}>
             From date
-            <input type="date" className={input} value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+            <DateField value={fromDate} allowEmpty onChange={setFromDate} />
           </label>
           <label className={label}>
             To date
-            <input type="date" className={input} value={toDate} onChange={(e) => setToDate(e.target.value)} />
+            <DateField value={toDate} allowEmpty minDate={fromDate ? new Date(fromDate + "T00:00:00") : undefined} onChange={setToDate} />
           </label>
         </div>
         <div className="flex flex-wrap justify-center gap-3">

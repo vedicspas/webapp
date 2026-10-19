@@ -187,7 +187,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
         ) : (
           <aside
             id="listing-booking"
-            className="scroll-mt-16 lg:sticky lg:top-[var(--listing-sticky-top,5rem)] lg:self-start"
+            className="no-scrollbar scroll-mt-16 lg:sticky lg:top-[var(--listing-sticky-top,5rem)] lg:max-h-[calc(100vh-var(--listing-sticky-top,5rem)-0.75rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain"
           >
             <BookingWidget spa={spa} />
           </aside>

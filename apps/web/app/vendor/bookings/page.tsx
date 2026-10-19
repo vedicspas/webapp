@@ -11,6 +11,7 @@ import { PageBusy } from "@/components/PageBusy";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AffixedField } from "@/components/AffixedInput";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
+import { DateField } from "@/components/DateField";
 
 const STATUS_ACTIONS: Record<string, string> = {
   completed: "Mark completed",
@@ -160,21 +161,11 @@ function BookingsInner() {
         <div className="grid gap-3 sm:grid-cols-2">
           <label className="text-sm font-medium">
             Booking date from
-            <input
-              type="date"
-              value={draftFrom}
-              onChange={(e) => setDraftFrom(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
-            />
+            <DateField value={draftFrom} allowEmpty onChange={setDraftFrom} />
           </label>
           <label className="text-sm font-medium">
             Booking date to
-            <input
-              type="date"
-              value={draftTo}
-              onChange={(e) => setDraftTo(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
-            />
+            <DateField value={draftTo} allowEmpty minDate={draftFrom ? new Date(draftFrom + "T00:00:00") : undefined} onChange={setDraftTo} />
           </label>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">

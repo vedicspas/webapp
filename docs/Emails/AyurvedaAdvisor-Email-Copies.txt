@@ -329,3 +329,16 @@ This enquiry has not been sent to the clinic, and no appointment has been booked
 Review enquiry: {{AdminInquiryUrl}}
 
 The AyurvedaAdvisor Team
+----------------------
+16. Email Purpose: Your AyurvedaAdvisor.com password has been changed
+Target Recipient: User
+Hi {{FirstName}},
+
+Your password has been changed successfully. You can now sign in to AyurvedaAdvisor.com using your new password.
+
+[Sign In]({{LoginUrl}})
+
+If you didn’t make this change, please contact us immediately at {{SupportEmail}}.
+
+Warm regards,  
+The AyurvedaAdvisor.com Team

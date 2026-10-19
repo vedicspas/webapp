@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { signOutAndGo } from "@/lib/signOut";
-import { UserAvatar } from "@/components/UserAvatar";
+import { UserMenu } from "@/components/UserMenu";
 import { useListingNavStore } from "@/stores/listingNavStore";
 
 const NAV = [
@@ -50,31 +50,10 @@ export function Header() {
               Vendor dashboard
             </Link>
           ) : null}
-          {user?.role === "admin" ? (
-            <Link href="/admin" className="hover:text-turmeric-200">
-              Admin
-            </Link>
-          ) : null}
           {!sessionReady ? (
             <span className="inline-block h-8 w-24 animate-pulse rounded-full bg-white/20" />
           ) : user ? (
-            <span className="flex items-center gap-3">
-              <Link href={`/profile/${user.username}`} className="flex items-center gap-2 hover:text-turmeric-200">
-                <UserAvatar
-                  name={user.name}
-                  src={user.avatarUrl}
-                  size={28}
-                  className="bg-white/15 text-white"
-                />
-                {user.name.split(" ")[0]}
-              </Link>
-              <button
-                onClick={() => void signOutAndGo("/")}
-                className="rounded-full border border-white/30 px-3 py-1 text-xs hover:bg-white/10"
-              >
-                Sign out
-              </button>
-            </span>
+            <UserMenu user={user} />
           ) : (
             <Link
               href="/auth/signin"
@@ -111,20 +90,24 @@ export function Header() {
               Vendor dashboard
             </Link>
           ) : null}
-          {user?.role === "admin" ? (
-            <Link href="/admin" className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
-              Admin
-            </Link>
-          ) : null}
           {!sessionReady ? (
             <span className="rounded px-2 py-2 text-white/60">Loading…</span>
           ) : user ? (
             <>
-              <Link href={`/profile/${user.username}`} className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
-                My profile
+              {user.role === "admin" ? (
+                <Link href="/admin" className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
+                  Manage
+                </Link>
+              ) : (
+                <Link href={`/profile/${user.username}`} className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
+                  Profile
+                </Link>
+              )}
+              <Link href="/account/password" className="rounded px-2 py-2 hover:bg-white/10" onClick={() => setOpen(false)}>
+                Change Password
               </Link>
               <button onClick={() => void signOutAndGo("/")} className="rounded px-2 py-2 text-left hover:bg-white/10">
-                Sign out
+                Sign Out
               </button>
             </>
           ) : (

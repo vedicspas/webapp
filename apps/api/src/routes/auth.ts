@@ -10,6 +10,7 @@ import { publicPhotoUrl } from "../lib/uploads.js";
 import { notifyPasswordReset, notifyPasswordUpdated, notifyWelcomeUser, notifyWelcomeVendor } from "../lib/notify.js";
 import { readEmailToken, signEmailToken, siteUrl } from "../lib/mailer.js";
 import { assertTurnstile } from "../lib/turnstile.js";
+import { requireAuth } from "../plugins/auth.js";
 
 interface UserRow {
   id: number;
@@ -156,6 +157,33 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     if (!email) return reply.code(400).send({ error: "This reset link is invalid or expired." });
     const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.email = ?`, [email]);
     if (!row) return reply.code(400).send({ error: "This reset link is invalid or expired." });
+    const hash = await bcrypt.hash(body.password, 10);
+    await execute("UPDATE users SET password_hash = ? WHERE id = ?", [hash, row.id]);
+    await notifyPasswordUpdated(row.email, row.name);
+    return { ok: true };
+  });
+
+  app.post("/auth/change-password", { preHandler: requireAuth }, async (request, reply) => {
+    if (!request.user) return;
+    const body = z
+      .object({
+        currentPassword: z.string().min(1),
+        password: z.string().min(8),
+      })
+      .parse(request.body);
+    const row = await queryOne<UserRow>(`${USER_SELECT} WHERE u.id = ?`, [request.user.id]);
+    if (!row) return reply.code(404).send({ error: "Account not found" });
+    if (!row.password_hash) {
+      return reply.code(400).send({
+        error: "This account signs in with Google. Use Forgot password to set a password first.",
+      });
+    }
+    if (!(await bcrypt.compare(body.currentPassword, row.password_hash))) {
+      return reply.code(401).send({ error: "Current password is incorrect" });
+    }
+    if (await bcrypt.compare(body.password, row.password_hash)) {
+      return reply.code(400).send({ error: "Choose a new password that is different from your current one." });
+    }
     const hash = await bcrypt.hash(body.password, 10);
     await execute("UPDATE users SET password_hash = ? WHERE id = ?", [hash, row.id]);
     await notifyPasswordUpdated(row.email, row.name);

@@ -29,7 +29,7 @@ export type EmailType = (typeof EMAIL_TYPES)[number];
 export const EMAIL_TYPE_LABELS: Record<EmailType, string> = {
   welcome_vendor: "Welcome (clinic owner)",
   welcome_user: "Welcome (user)",
-  password_updated: "Password updated",
+  password_updated: "Password changed",
   password_reset: "Password reset",
   clinic_submitted: "Clinic submitted",
   appointment_confirmed: "Appointment confirmation",

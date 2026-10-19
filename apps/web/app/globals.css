@@ -51,6 +51,30 @@ body {
   color: var(--foreground);
 }
 
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.booking-day-picker .rdp-root {
+  --rdp-accent-color: #2b533d;
+  --rdp-accent-background-color: #dfece2;
+  --rdp-today-color: #c07218;
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-width: 34px;
+  width: fit-content;
+}
+.booking-day-picker .rdp-months,
+.booking-day-picker .rdp-month,
+.booking-day-picker .rdp-month_grid {
+  width: max-content;
+}
+
 /* Clickable controls always show a pointer, including native buttons/links. */
 a[href],
 button:not(:disabled),

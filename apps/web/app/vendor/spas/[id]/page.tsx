@@ -10,6 +10,7 @@ import { DollarInput, PostfixInput } from "@/components/AffixedInput";
 import { TagInput } from "@/components/TagInput";
 import { toast } from "@/stores/toastStore";
 import { easeScrollTo } from "@/lib/smoothScroll";
+import { DateField } from "@/components/DateField";
 import type { OnRequestFlag, StaticMeta } from "@vedic/shared";
 
 interface RetreatSlot {
@@ -1137,13 +1138,12 @@ export default function VendorSpaEditPage() {
                       <div className="mt-2 grid items-end gap-2 sm:grid-cols-[1fr_8rem_auto]">
                         <label className={label}>
                           Date
-                          <input
-                            type="date"
-                            className={input}
+                          <DateField
                             value={t.newStartDate}
-                            onChange={(e) =>
+                            minDate="today"
+                            onChange={(next) =>
                               setTreatments((list) =>
-                                list.map((x, j) => (j === i ? { ...x, newStartDate: e.target.value } : x))
+                                list.map((x, j) => (j === i ? { ...x, newStartDate: next } : x))
                               )
                             }
                           />
