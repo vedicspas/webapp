@@ -13,26 +13,44 @@ import { easeScrollTo } from "@/lib/smoothScroll";
 import { DateField } from "@/components/DateField";
 import type { OnRequestFlag, StaticMeta } from "@vedic/shared";
 
-interface RetreatSlot {
+interface VendorProgramBatch {
+  id: number;
+  label: string;
+  startTime: string;
+  endTime: string;
+  capacity: number;
+}
+
+interface VendorProgramRun {
   id: number;
   startDate: string;
-  capacity: number;
+  endDate?: string;
+  batches: VendorProgramBatch[];
+  newLabel: string;
+  newStartTime: string;
+  newEndTime: string;
+  newCapacity: number;
 }
 
 interface VendorTreatment {
   id?: number;
   clientKey?: string;
   categoryId: number;
-  kind: "session" | "retreat";
+  kind: "session" | "retreat" | "program";
   name: string;
   description: string;
   durationMinutes: number | null;
-  nights: number | null;
+  durationDays: number | null;
+  retreatWeekdays: number[];
+  retreatCapacity: number | null;
   priceMinor: number;
   isActive: boolean;
-  slots: RetreatSlot[];
-  newStartDate: string;
-  newCapacity: number;
+  programRuns: VendorProgramRun[];
+  newRunDate: string;
+}
+
+function blankRunFields(): Pick<VendorProgramRun, "newLabel" | "newStartTime" | "newEndTime" | "newCapacity"> {
+  return { newLabel: "", newStartTime: "09:00", newEndTime: "12:00", newCapacity: 8 };
 }
 
 function blankTreatment(categoryId: number): VendorTreatment {
@@ -43,12 +61,13 @@ function blankTreatment(categoryId: number): VendorTreatment {
     name: "",
     description: "",
     durationMinutes: 60,
-    nights: null,
+    durationDays: null,
+    retreatWeekdays: [],
+    retreatCapacity: 8,
     priceMinor: 5000,
     isActive: true,
-    slots: [],
-    newStartDate: "",
-    newCapacity: 8,
+    programRuns: [],
+    newRunDate: "",
   };
 }
 
@@ -57,8 +76,14 @@ function treatmentReadyToSave(t: VendorTreatment): string | null {
   if (t.kind === "session" && (!t.durationMinutes || t.durationMinutes < 15)) {
     return "Enter a duration of at least 15 minutes.";
   }
-  if (t.kind === "retreat" && (!t.nights || t.nights < 1)) {
-    return "Enter the number of nights.";
+  if ((t.kind === "retreat" || t.kind === "program") && (!t.durationDays || t.durationDays < 1)) {
+    return "Enter the duration in days.";
+  }
+  if (t.kind === "retreat" && t.retreatWeekdays.length === 0) {
+    return "Choose at least one weekday guests can start on.";
+  }
+  if (t.kind === "retreat" && (!t.retreatCapacity || t.retreatCapacity < 1)) {
+    return "Enter how many people can start each day.";
   }
   return null;
 }
@@ -196,7 +221,11 @@ export default function VendorSpaEditPage() {
     const data = await call<{
       slug?: string;
       clinicCode?: string;
-      treatments: Array<Omit<VendorTreatment, "newStartDate" | "newCapacity" | "slots"> & { slots?: RetreatSlot[] }>;
+      treatments: Array<
+        Omit<VendorTreatment, "newRunDate" | "programRuns"> & {
+          programRuns?: Array<Omit<VendorProgramRun, "newLabel" | "newStartTime" | "newEndTime" | "newCapacity">>;
+        }
+      >;
       photos: VendorPhoto[];
       openHours: { weekday: number; openTime: string; closeTime: string }[];
       languages?: { id: number; name: string }[];
@@ -250,9 +279,11 @@ export default function VendorSpaEditPage() {
       data.treatments.map((t) => ({
         ...t,
         isActive: Boolean(t.isActive),
-        slots: t.slots ?? [],
-        newStartDate: "",
-        newCapacity: 8,
+        durationDays: t.durationDays ?? null,
+        retreatWeekdays: t.retreatWeekdays ?? [],
+        retreatCapacity: t.retreatCapacity ?? 8,
+        programRuns: (t.programRuns ?? []).map((run) => ({ ...run, ...blankRunFields() })),
+        newRunDate: "",
       }))
     );
     setPhotos(
@@ -444,7 +475,9 @@ export default function VendorSpaEditPage() {
         name: t.name.trim(),
         description: t.description,
         durationMinutes: t.kind === "session" ? t.durationMinutes : null,
-        nights: t.kind === "retreat" ? t.nights : null,
+        durationDays: t.kind === "session" ? null : t.durationDays,
+        retreatWeekdays: t.kind === "retreat" ? t.retreatWeekdays : [],
+        retreatCapacity: t.kind === "retreat" ? t.retreatCapacity : null,
         priceMinor: t.priceMinor,
         isActive: t.isActive,
       };
@@ -483,33 +516,29 @@ export default function VendorSpaEditPage() {
     }
   }
 
-  async function addRetreatSlot(t: VendorTreatment, index: number) {
+  async function addProgramRun(t: VendorTreatment, index: number) {
     if (!t.id) {
-      toast("Save the retreat first, then add start dates.", "error");
+      toast("Save the program first, then add start dates.", "error");
       return;
     }
-    const startDate = t.newStartDate.trim();
-    const capacity = Number(t.newCapacity);
+    const startDate = t.newRunDate.trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
       toast("Choose a start date.", "error");
       return;
     }
-    if (!Number.isInteger(capacity) || capacity < 1) {
-      toast("Capacity must be at least 1.", "error");
-      return;
-    }
     try {
-      const created = await call<RetreatSlot>(`/vendor/treatments/${t.id}/retreat-slots`, {
-        method: "POST",
-        body: { startDate, capacity },
-      });
+      const created = await call<Omit<VendorProgramRun, "newLabel" | "newStartTime" | "newEndTime" | "newCapacity">>(
+        `/vendor/treatments/${t.id}/program-runs`,
+        { method: "POST", body: { startDate } }
+      );
       setTreatments((list) =>
         list.map((x, j) => {
           if (j !== index) return x;
-          const slots = [...x.slots.filter((s) => s.startDate !== created.startDate), created].sort((a, b) =>
-            a.startDate.localeCompare(b.startDate)
-          );
-          return { ...x, slots, newStartDate: "" };
+          const programRuns = [
+            ...x.programRuns.filter((r) => r.startDate !== created.startDate),
+            { ...created, batches: created.batches ?? [], ...blankRunFields() },
+          ].sort((a, b) => a.startDate.localeCompare(b.startDate));
+          return { ...x, programRuns, newRunDate: "" };
         })
       );
       toast("Start date added.");
@@ -519,18 +548,91 @@ export default function VendorSpaEditPage() {
     }
   }
 
-  async function removeRetreatSlot(t: VendorTreatment, index: number, slot: RetreatSlot) {
+  async function removeProgramRun(t: VendorTreatment, index: number, run: VendorProgramRun) {
     if (!t.id) return;
-    if (!window.confirm(`Remove the ${slot.startDate} start date?`)) return;
+    if (!window.confirm(`Remove the ${run.startDate} start date?`)) return;
     try {
-      await call(`/vendor/treatments/${t.id}/retreat-slots/${slot.id}`, { method: "DELETE" });
+      await call(`/vendor/treatments/${t.id}/program-runs/${run.id}`, { method: "DELETE" });
       setTreatments((list) =>
-        list.map((x, j) => (j === index ? { ...x, slots: x.slots.filter((s) => s.id !== slot.id) } : x))
+        list.map((x, j) => (j === index ? { ...x, programRuns: x.programRuns.filter((r) => r.id !== run.id) } : x))
       );
       toast("Start date removed.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not remove start date", "error");
+    }
+  }
+
+  async function addProgramBatch(t: VendorTreatment, index: number, run: VendorProgramRun) {
+    if (!t.id) return;
+    const capacity = Number(run.newCapacity);
+    if (!/^\d{2}:\d{2}/.test(run.newStartTime) || !/^\d{2}:\d{2}/.test(run.newEndTime)) {
+      toast("Enter start and end times.", "error");
+      return;
+    }
+    if (run.newEndTime.slice(0, 5) <= run.newStartTime.slice(0, 5)) {
+      toast("The batch must end after it starts.", "error");
+      return;
+    }
+    if (!Number.isInteger(capacity) || capacity < 1) {
+      toast("Capacity must be at least 1.", "error");
+      return;
+    }
+    try {
+      const created = await call<VendorProgramBatch>(
+        `/vendor/treatments/${t.id}/program-runs/${run.id}/batches`,
+        {
+          method: "POST",
+          body: {
+            label: run.newLabel.trim(),
+            startTime: run.newStartTime,
+            endTime: run.newEndTime,
+            capacity,
+          },
+        }
+      );
+      setTreatments((list) =>
+        list.map((x, j) => {
+          if (j !== index) return x;
+          return {
+            ...x,
+            programRuns: x.programRuns.map((r) =>
+              r.id === run.id
+                ? { ...r, batches: [...r.batches, created], ...blankRunFields() }
+                : r
+            ),
+          };
+        })
+      );
+      toast("Time batch added.");
+      await refreshPublicSpaPage(listingSlug);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not add time batch", "error");
+    }
+  }
+
+  async function removeProgramBatch(t: VendorTreatment, index: number, batch: VendorProgramBatch) {
+    if (!t.id) return;
+    if (!window.confirm("Remove this time batch?")) return;
+    try {
+      await call(`/vendor/treatments/${t.id}/program-batches/${batch.id}`, { method: "DELETE" });
+      setTreatments((list) =>
+        list.map((x, j) =>
+          j === index
+            ? {
+                ...x,
+                programRuns: x.programRuns.map((r) => ({
+                  ...r,
+                  batches: r.batches.filter((b) => b.id !== batch.id),
+                })),
+              }
+            : x
+        )
+      );
+      toast("Time batch removed.");
+      await refreshPublicSpaPage(listingSlug);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not remove time batch", "error");
     }
   }
 
@@ -1030,7 +1132,7 @@ export default function VendorSpaEditPage() {
                     className={input}
                     value={t.kind}
                     onChange={(e) => {
-                      const kind = e.target.value as "session" | "retreat";
+                      const kind = e.target.value as VendorTreatment["kind"];
                       setTreatments((list) =>
                         list.map((x, j) =>
                           j === i
@@ -1038,7 +1140,14 @@ export default function VendorSpaEditPage() {
                                 ...x,
                                 kind,
                                 durationMinutes: kind === "session" ? x.durationMinutes || 60 : null,
-                                nights: kind === "retreat" ? x.nights || 3 : null,
+                                durationDays: kind === "session" ? null : x.durationDays || 3,
+                                retreatWeekdays:
+                                  kind === "retreat"
+                                    ? x.retreatWeekdays.length
+                                      ? x.retreatWeekdays
+                                      : [1, 2, 3, 4, 5]
+                                    : [],
+                                retreatCapacity: kind === "retreat" ? x.retreatCapacity || 8 : null,
                               }
                             : x
                         )
@@ -1047,6 +1156,7 @@ export default function VendorSpaEditPage() {
                   >
                     <option value="session">Session (time slot)</option>
                     <option value="retreat">Retreat (multi-day)</option>
+                    <option value="program">Special program</option>
                   </select>
                 </label>
                 {t.kind === "session" ? (
@@ -1066,17 +1176,17 @@ export default function VendorSpaEditPage() {
                   </div>
                 ) : (
                   <div>
-                    <span className="mb-1 block text-sm font-medium">Length</span>
+                    <span className="mb-1 block text-sm font-medium">Duration</span>
                     <PostfixInput
-                      suffix="Nights"
+                      suffix="Days"
                       placeholder="3"
-                      value={t.nights}
+                      value={t.durationDays}
                       onChangeValue={(n) =>
                         setTreatments((list) =>
-                          list.map((x, j) => (j === i ? { ...x, nights: n } : x))
+                          list.map((x, j) => (j === i ? { ...x, durationDays: n } : x))
                         )
                       }
-                      aria-label="Length in nights"
+                      aria-label="Duration in days"
                     />
                   </div>
                 )}
@@ -1107,67 +1217,222 @@ export default function VendorSpaEditPage() {
               </div>
               {t.kind === "retreat" ? (
                 <div className="rounded-lg border border-veda-100 bg-veda-50/40 p-3">
-                  <p className="text-sm font-medium">Start dates</p>
+                  <p className="text-sm font-medium">Start weekdays</p>
                   <p className="mt-0.5 text-xs text-foreground/55">
-                    Guests pick one of these dates on the listing. Capacity is how many people can start that day.
+                    Guests pick any upcoming date that falls on these weekdays. Capacity is how many people can
+                    start that day.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    {WEEKDAYS.map((labelText, day) => (
+                      <label key={day} className="flex items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={t.retreatWeekdays.includes(day)}
+                          onChange={(e) =>
+                            setTreatments((list) =>
+                              list.map((x, j) => {
+                                if (j !== i) return x;
+                                const retreatWeekdays = e.target.checked
+                                  ? [...x.retreatWeekdays, day].sort((a, b) => a - b)
+                                  : x.retreatWeekdays.filter((d) => d !== day);
+                                return { ...x, retreatWeekdays };
+                              })
+                            )
+                          }
+                        />
+                        {labelText.slice(0, 3)}
+                      </label>
+                    ))}
+                  </div>
+                  <label className={`${label} mt-3 max-w-[12rem]`}>
+                    Daily start capacity
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      className={input}
+                      value={t.retreatCapacity ?? ""}
+                      onChange={(e) =>
+                        setTreatments((list) =>
+                          list.map((x, j) =>
+                            j === i ? { ...x, retreatCapacity: Number(e.target.value) || 0 } : x
+                          )
+                        )
+                      }
+                    />
+                  </label>
+                </div>
+              ) : null}
+              {t.kind === "program" ? (
+                <div className="rounded-lg border border-veda-100 bg-veda-50/40 p-3">
+                  <p className="text-sm font-medium">Scheduled dates and time batches</p>
+                  <p className="mt-0.5 text-xs text-foreground/55">
+                    Guests pick a start date, then a time batch. This program leaves the booking menu after its
+                    last start date has passed.
                   </p>
                   {!t.id ? (
-                    <p className="mt-2 text-sm text-foreground/60">Save this retreat first, then add start dates.</p>
+                    <p className="mt-2 text-sm text-foreground/60">Save this program first, then add start dates.</p>
                   ) : (
                     <>
-                      {t.slots.length === 0 ? (
+                      {t.programRuns.length === 0 ? (
                         <p className="mt-2 text-sm text-foreground/60">No start dates yet.</p>
                       ) : (
-                        <ul className="mt-2 space-y-1">
-                          {t.slots.map((slot) => (
-                            <li key={slot.id} className="flex items-center justify-between gap-2 text-sm">
-                              <span>
-                                {slot.startDate} · {slot.capacity} spot{slot.capacity === 1 ? "" : "s"}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => void removeRetreatSlot(t, i, slot)}
-                                className="text-red-700 hover:underline"
-                              >
-                                Remove
-                              </button>
+                        <ul className="mt-2 space-y-3">
+                          {t.programRuns.map((run) => (
+                            <li key={run.id} className="rounded-lg border border-veda-100 bg-white p-3">
+                              <div className="flex items-center justify-between gap-2 text-sm">
+                                <span className="font-medium">{run.startDate}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void removeProgramRun(t, i, run)}
+                                  className="text-red-700 hover:underline"
+                                >
+                                  Remove date
+                                </button>
+                              </div>
+                              {run.batches.length === 0 ? (
+                                <p className="mt-2 text-sm text-foreground/60">No time batches yet.</p>
+                              ) : (
+                                <ul className="mt-2 space-y-1">
+                                  {run.batches.map((batch) => (
+                                    <li key={batch.id} className="flex items-center justify-between gap-2 text-sm">
+                                      <span>
+                                        {batch.label ? `${batch.label} · ` : ""}
+                                        {batch.startTime}–{batch.endTime} · {batch.capacity} spot
+                                        {batch.capacity === 1 ? "" : "s"}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={() => void removeProgramBatch(t, i, batch)}
+                                        className="text-red-700 hover:underline"
+                                      >
+                                        Remove
+                                      </button>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              <div className="mt-2 grid items-end gap-2 sm:grid-cols-[1fr_6.5rem_6.5rem_6rem_auto]">
+                                <label className={label}>
+                                  Label
+                                  <input
+                                    className={input}
+                                    placeholder="Morning batch"
+                                    value={run.newLabel}
+                                    onChange={(e) =>
+                                      setTreatments((list) =>
+                                        list.map((x, j) =>
+                                          j === i
+                                            ? {
+                                                ...x,
+                                                programRuns: x.programRuns.map((r) =>
+                                                  r.id === run.id ? { ...r, newLabel: e.target.value } : r
+                                                ),
+                                              }
+                                            : x
+                                        )
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className={label}>
+                                  Starts
+                                  <input
+                                    type="time"
+                                    className={input}
+                                    value={run.newStartTime}
+                                    onChange={(e) =>
+                                      setTreatments((list) =>
+                                        list.map((x, j) =>
+                                          j === i
+                                            ? {
+                                                ...x,
+                                                programRuns: x.programRuns.map((r) =>
+                                                  r.id === run.id ? { ...r, newStartTime: e.target.value } : r
+                                                ),
+                                              }
+                                            : x
+                                        )
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className={label}>
+                                  Ends
+                                  <input
+                                    type="time"
+                                    className={input}
+                                    value={run.newEndTime}
+                                    onChange={(e) =>
+                                      setTreatments((list) =>
+                                        list.map((x, j) =>
+                                          j === i
+                                            ? {
+                                                ...x,
+                                                programRuns: x.programRuns.map((r) =>
+                                                  r.id === run.id ? { ...r, newEndTime: e.target.value } : r
+                                                ),
+                                              }
+                                            : x
+                                        )
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <label className={label}>
+                                  Capacity
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={500}
+                                    className={input}
+                                    value={run.newCapacity}
+                                    onChange={(e) =>
+                                      setTreatments((list) =>
+                                        list.map((x, j) =>
+                                          j === i
+                                            ? {
+                                                ...x,
+                                                programRuns: x.programRuns.map((r) =>
+                                                  r.id === run.id
+                                                    ? { ...r, newCapacity: Number(e.target.value) || 0 }
+                                                    : r
+                                                ),
+                                              }
+                                            : x
+                                        )
+                                      )
+                                    }
+                                  />
+                                </label>
+                                <button
+                                  type="button"
+                                  onClick={() => void addProgramBatch(t, i, run)}
+                                  className="rounded-full border border-veda-300 px-4 py-2 text-sm hover:bg-veda-50"
+                                >
+                                  Add batch
+                                </button>
+                              </div>
                             </li>
                           ))}
                         </ul>
                       )}
-                      <div className="mt-2 grid items-end gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                      <div className="mt-2 grid items-end gap-2 sm:grid-cols-[1fr_auto]">
                         <label className={label}>
                           Date
                           <DateField
-                            value={t.newStartDate}
+                            value={t.newRunDate}
                             minDate="today"
                             onChange={(next) =>
                               setTreatments((list) =>
-                                list.map((x, j) => (j === i ? { ...x, newStartDate: next } : x))
-                              )
-                            }
-                          />
-                        </label>
-                        <label className={label}>
-                          Capacity
-                          <input
-                            type="number"
-                            min={1}
-                            max={500}
-                            className={input}
-                            value={t.newCapacity}
-                            onChange={(e) =>
-                              setTreatments((list) =>
-                                list.map((x, j) =>
-                                  j === i ? { ...x, newCapacity: Number(e.target.value) || 0 } : x
-                                )
+                                list.map((x, j) => (j === i ? { ...x, newRunDate: next } : x))
                               )
                             }
                           />
                         </label>
                         <button
                           type="button"
-                          onClick={() => void addRetreatSlot(t, i)}
+                          onClick={() => void addProgramRun(t, i)}
                           className="rounded-full border border-veda-300 px-4 py-2 text-sm hover:bg-veda-50"
                         >
                           Add date

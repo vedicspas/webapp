@@ -37,6 +37,7 @@ export function DateField({
   maxDate,
   placeholder = "Choose a date",
   allowEmpty = false,
+  isDateEnabled,
 }: {
   value: string;
   onChange: (iso: string) => void;
@@ -44,6 +45,7 @@ export function DateField({
   maxDate?: Date | "today";
   placeholder?: string;
   allowEmpty?: boolean;
+  isDateEnabled?: (iso: string) => boolean;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -55,6 +57,7 @@ export function DateField({
   const disabled: Matcher[] = [];
   if (minDate) disabled.push({ before: resolveBound(minDate) });
   if (maxDate) disabled.push({ after: resolveBound(maxDate) });
+  if (isDateEnabled) disabled.push((day) => !isDateEnabled(toIsoLocal(day)));
 
   function place() {
     const btn = btnRef.current;

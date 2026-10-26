@@ -343,6 +343,69 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   );
 
+  await run(
+    conn,
+    "ALTER TABLE treatments MODIFY COLUMN kind ENUM('session','retreat','program') NOT NULL DEFAULT 'session'"
+  );
+  await run(conn, "ALTER TABLE treatments ADD COLUMN IF NOT EXISTS duration_days TINYINT UNSIGNED NULL");
+  await run(conn, "ALTER TABLE treatments ADD COLUMN IF NOT EXISTS retreat_weekdays TINYINT UNSIGNED NULL");
+  await run(conn, "ALTER TABLE treatments ADD COLUMN IF NOT EXISTS retreat_capacity SMALLINT UNSIGNED NULL");
+
+  const [nightsCol] = await conn.query("SHOW COLUMNS FROM treatments LIKE 'nights'");
+  if (Array.isArray(nightsCol) && nightsCol.length > 0) {
+    await conn.query(
+      "UPDATE treatments SET duration_days = COALESCE(duration_days, nights) WHERE nights IS NOT NULL"
+    );
+    await run(conn, "ALTER TABLE treatments DROP COLUMN nights");
+  }
+
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS program_runs (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      treatment_id BIGINT UNSIGNED NOT NULL,
+      start_date DATE NOT NULL,
+      UNIQUE KEY uq_program_run (treatment_id, start_date),
+      CONSTRAINT fk_prun_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS program_batches (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      run_id BIGINT UNSIGNED NOT NULL,
+      label VARCHAR(80) NOT NULL DEFAULT '',
+      start_time TIME NOT NULL,
+      end_time TIME NOT NULL,
+      capacity SMALLINT UNSIGNED NOT NULL,
+      KEY idx_pbatch_run (run_id),
+      CONSTRAINT fk_pbatch_run FOREIGN KEY (run_id) REFERENCES program_runs(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(conn, "ALTER TABLE bookings ADD COLUMN IF NOT EXISTS program_batch_id BIGINT UNSIGNED NULL");
+  await run(
+    conn,
+    `ALTER TABLE bookings ADD CONSTRAINT fk_booking_pbatch
+      FOREIGN KEY (program_batch_id) REFERENCES program_batches(id) ON DELETE SET NULL`
+  );
+
+  const [slotTable] = await conn.query("SHOW TABLES LIKE 'retreat_slots'");
+  if (Array.isArray(slotTable) && slotTable.length > 0) {
+    await conn.query(
+      `UPDATE treatments t
+       INNER JOIN (
+         SELECT treatment_id,
+           BIT_OR(1 << (DAYOFWEEK(start_date) - 1)) AS weekdays,
+           MAX(capacity) AS cap
+         FROM retreat_slots
+         GROUP BY treatment_id
+       ) s ON s.treatment_id = t.id
+       SET t.retreat_weekdays = COALESCE(t.retreat_weekdays, s.weekdays),
+           t.retreat_capacity = COALESCE(t.retreat_capacity, s.cap)
+       WHERE t.kind = 'retreat'`
+    );
+  }
+
   console.log("Schema patches applied.");
 }
 

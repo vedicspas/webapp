@@ -11,8 +11,33 @@ import {
 } from "../lib/spaQueries.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
 import { loadSpaStay } from "../lib/spaStay.js";
+import { loadProgramRuns, weekdaysFromMask } from "../lib/treatmentSchedule.js";
 
 const PAGE_SIZE = 12;
+
+async function mapPublicTreatments(
+  rows: Array<
+    Omit<Treatment, "categoryName" | "retreatWeekdays"> & {
+      retreatWeekdays: number | null;
+    }
+  >
+): Promise<Treatment[]> {
+  const programIds = rows.filter((t) => t.kind === "program").map((t) => t.id);
+  const upcoming =
+    programIds.length === 0
+      ? new Map()
+      : await loadProgramRuns(programIds, { upcomingOnly: true });
+  return rows
+    .filter((t) => t.kind !== "program" || (upcoming.get(t.id)?.length ?? 0) > 0)
+    .map((t) => ({
+      ...t,
+      durationDays: t.durationDays == null ? null : Number(t.durationDays),
+      retreatWeekdays: weekdaysFromMask(t.retreatWeekdays),
+      retreatCapacity: t.retreatCapacity == null ? null : Number(t.retreatCapacity),
+      isActive: Boolean(t.isActive),
+      categoryName: staticCache.treatmentCategoryName(t.categoryId),
+    }));
+}
 
 const searchSchema = z.object({
   q: z.string().optional(),
@@ -258,10 +283,15 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         "SELECT id, url, alt, sort_order AS sortOrder FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
         [row.id]
       ),
-      query<Omit<Treatment, "categoryName">>(
+      query<
+        Omit<Treatment, "categoryName" | "retreatWeekdays"> & {
+          retreatWeekdays: number | null;
+        }
+      >(
         `SELECT id, spa_id AS spaId, category_id AS categoryId, kind, name, description,
-           duration_minutes AS durationMinutes, nights, price_minor AS priceMinor,
-           is_active AS isActive
+           duration_minutes AS durationMinutes, duration_days AS durationDays,
+           retreat_weekdays AS retreatWeekdays, retreat_capacity AS retreatCapacity,
+           price_minor AS priceMinor, is_active AS isActive
          FROM treatments WHERE spa_id = ? AND is_active = 1 ORDER BY kind, price_minor`,
         [row.id]
       ),
@@ -292,11 +322,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         alt: p.alt,
         sortOrder: p.sortOrder,
       })),
-      treatments: treatments.map((t) => ({
-        ...t,
-        isActive: Boolean(t.isActive),
-        categoryName: staticCache.treatmentCategoryName(t.categoryId),
-      })),
+      treatments: await mapPublicTreatments(treatments),
       openHours: hours,
       ...stay,
     };

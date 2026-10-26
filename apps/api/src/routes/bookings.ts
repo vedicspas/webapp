@@ -1,13 +1,20 @@
 import { allocateBookingCode } from "../lib/bookingRefs.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { AvailabilitySlot, Booking, CreateBookingResponse } from "@vedic/shared";
+import type {
+  AvailabilitySlot,
+  Booking,
+  CreateBookingResponse,
+  ProgramRun,
+  RetreatAvailability,
+} from "@vedic/shared";
 import { execute, query, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 import { platformFeeFor, stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
 import { notifyBooking } from "../lib/notify.js";
+import { addIsoDays, loadProgramRuns, padTime, weekdaysFromMask } from "../lib/treatmentSchedule.js";
 
 const SLOT_STEP_MINUTES = 30;
 
@@ -19,7 +26,7 @@ interface BookingRow {
   spa_slug: string;
   treatment_id: number;
   treatment_name: string;
-  treatment_kind: "session" | "retreat";
+  treatment_kind: "session" | "retreat" | "program";
   treatment_category_id: number;
   status_id: number;
   payment_mode_id: number;
@@ -138,42 +145,88 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     return slots;
   });
 
-  /** Upcoming departures with remaining capacity for a retreat treatment. */
-  app.get("/treatments/:id/retreat-slots", async (request) => {
+  /** Allowed start weekdays and remaining capacity for a retreat. */
+  app.get("/treatments/:id/retreat-availability", async (request, reply) => {
     const treatmentId = Number((request.params as { id: string }).id);
-    const cancelled = staticCache.bookingStatusByCode("cancelled")!.id;
-    const rows = await query<{
-      id: number;
-      start_date: string;
-      capacity: number;
-      booked: number;
+    const treatment = await queryOne<{
+      spa_id: number;
+      kind: string;
+      duration_days: number | null;
+      retreat_weekdays: number | null;
+      retreat_capacity: number | null;
     }>(
-      `SELECT rs.id, rs.start_date, rs.capacity,
-         COALESCE((
-           SELECT SUM(b.party_size) FROM bookings b
-           WHERE b.treatment_id = rs.treatment_id
-             AND DATE(b.starts_at) = rs.start_date
-             AND b.status_id != ?
-         ), 0) AS booked
-       FROM retreat_slots rs
-       WHERE rs.treatment_id = ? AND rs.start_date >= CURDATE()
-       ORDER BY rs.start_date`,
-      [cancelled, treatmentId]
+      `SELECT spa_id, kind, duration_days, retreat_weekdays, retreat_capacity
+       FROM treatments WHERE id = ? AND is_active = 1`,
+      [treatmentId]
     );
-    return rows.map((r) => ({
-      id: r.id,
-      treatmentId,
-      startDate: new Date(r.start_date).toISOString().slice(0, 10),
-      capacity: r.capacity,
-      bookedCount: Number(r.booked),
-    }));
+    if (!treatment || treatment.kind !== "retreat") {
+      return reply.code(400).send({ error: "Treatment is not a bookable retreat" });
+    }
+
+    const weekdays = weekdaysFromMask(treatment.retreat_weekdays);
+    const capacity = Number(treatment.retreat_capacity ?? 0);
+    const durationDays = Number(treatment.duration_days ?? 1);
+    const remainingByDate: Record<string, number> = {};
+    const empty: RetreatAvailability = { weekdays, capacity, durationDays, remainingByDate };
+    if (weekdays.length === 0 || capacity < 1) return empty;
+
+    const cancelled = staticCache.bookingStatusByCode("cancelled")!.id;
+    const todayRow = await queryOne<{ d: string }>("SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS d");
+    const today = todayRow?.d ?? new Date().toISOString().slice(0, 10);
+    const horizon = addIsoDays(today, 180);
+
+    const closures = await query<{ from: string; to: string }>(
+      `SELECT DATE_FORMAT(date_from, '%Y-%m-%d') AS \`from\`, DATE_FORMAT(date_to, '%Y-%m-%d') AS \`to\`
+       FROM spa_closures WHERE spa_id = ? AND date_to >= ? AND date_from <= ?`,
+      [treatment.spa_id, today, horizon]
+    );
+    const closed = new Set<string>();
+    for (const row of closures) {
+      for (let d = row.from; d <= row.to; d = addIsoDays(d, 1)) closed.add(d);
+    }
+
+    const bookedRows = await query<{ d: string; n: number }>(
+      `SELECT DATE_FORMAT(starts_at, '%Y-%m-%d') AS d, SUM(party_size) AS n
+       FROM bookings
+       WHERE treatment_id = ? AND status_id != ? AND DATE(starts_at) >= ? AND program_batch_id IS NULL
+       GROUP BY DATE(starts_at)`,
+      [treatmentId, cancelled, today]
+    );
+    const bookedByDate = new Map(bookedRows.map((r) => [r.d, Number(r.n)]));
+
+    for (let d = today; d <= horizon; d = addIsoDays(d, 1)) {
+      const weekday = new Date(`${d}T00:00:00Z`).getUTCDay();
+      if (!weekdays.includes(weekday) || closed.has(d)) continue;
+      remainingByDate[d] = Math.max(0, capacity - (bookedByDate.get(d) ?? 0));
+    }
+    return { weekdays, capacity, durationDays, remainingByDate } satisfies RetreatAvailability;
+  });
+
+  /** Upcoming special-program runs with time batches. */
+  app.get("/treatments/:id/program-runs", async (request, reply) => {
+    const treatmentId = Number((request.params as { id: string }).id);
+    const treatment = await queryOne<{ kind: string; duration_days: number | null }>(
+      "SELECT kind, duration_days FROM treatments WHERE id = ? AND is_active = 1",
+      [treatmentId]
+    );
+    if (!treatment || treatment.kind !== "program") {
+      return reply.code(400).send({ error: "Treatment is not a special program" });
+    }
+    const cancelled = staticCache.bookingStatusByCode("cancelled")!.id;
+    const byTreatment = await loadProgramRuns([treatmentId], {
+      upcomingOnly: true,
+      durationByTreatment: new Map([[treatmentId, Number(treatment.duration_days ?? 1)]]),
+      cancelledStatusId: cancelled,
+    });
+    return (byTreatment.get(treatmentId) ?? []) satisfies ProgramRun[];
   });
 
   app.post("/bookings", { preHandler: requireAuth }, async (request, reply) => {
     const body = z
       .object({
         treatmentId: z.number(),
-        startsAt: z.string(), // ISO datetime for sessions; YYYY-MM-DD for retreats
+        startsAt: z.string(), // ISO datetime for sessions; YYYY-MM-DD for retreats/programs
+        batchId: z.number().int().positive().optional(),
         partySize: z.number().int().min(1).max(10).default(1),
         notes: z.string().max(2000).optional(),
       })
@@ -182,12 +235,15 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     const treatment = await queryOne<{
       id: number;
       spa_id: number;
-      kind: "session" | "retreat";
+      kind: "session" | "retreat" | "program";
       duration_minutes: number | null;
-      nights: number | null;
+      duration_days: number | null;
+      retreat_weekdays: number | null;
+      retreat_capacity: number | null;
       price_minor: number;
     }>(
-      "SELECT id, spa_id, kind, duration_minutes, nights, price_minor FROM treatments WHERE id = ? AND is_active = 1",
+      `SELECT id, spa_id, kind, duration_minutes, duration_days, retreat_weekdays, retreat_capacity, price_minor
+       FROM treatments WHERE id = ? AND is_active = 1`,
       [body.treatmentId]
     );
     if (!treatment) return reply.code(404).send({ error: "Treatment not found" });
@@ -214,6 +270,8 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     // Compute start/end and validate availability
     let startsAt: Date;
     let endsAt: Date;
+    let programBatchId: number | null = null;
+    const cancelled = staticCache.bookingStatusByCode("cancelled")!.id;
     if (treatment.kind === "session") {
       startsAt = new Date(body.startsAt);
       if (Number.isNaN(startsAt.getTime()) || startsAt.getTime() < Date.now()) {
@@ -221,31 +279,78 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
       }
       endsAt = new Date(startsAt.getTime() + (treatment.duration_minutes ?? 60) * 60_000);
 
-      const cancelled = staticCache.bookingStatusByCode("cancelled")!.id;
       const clash = await queryOne(
         `SELECT id FROM bookings
          WHERE spa_id = ? AND status_id != ? AND starts_at < ? AND ends_at > ?`,
         [spa.id, cancelled, toMySqlDateTime(endsAt), toMySqlDateTime(startsAt)]
       );
       if (clash) return reply.code(409).send({ error: "This time slot was just taken. Pick another." });
-    } else {
+    } else if (treatment.kind === "retreat") {
       const date = body.startsAt.slice(0, 10);
-      const slot = await queryOne<{ id: number; capacity: number; booked: number }>(
-        `SELECT rs.id, rs.capacity,
-           COALESCE((
-             SELECT SUM(b.party_size) FROM bookings b
-             WHERE b.treatment_id = rs.treatment_id AND DATE(b.starts_at) = rs.start_date
-               AND b.status_id != ?
-           ), 0) AS booked
-         FROM retreat_slots rs WHERE rs.treatment_id = ? AND rs.start_date = ?`,
-        [staticCache.bookingStatusByCode("cancelled")!.id, treatment.id, date]
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return reply.code(400).send({ error: "Choose a start date" });
+      }
+      const weekdays = weekdaysFromMask(treatment.retreat_weekdays);
+      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+      const capacity = Number(treatment.retreat_capacity ?? 0);
+      if (!weekdays.includes(weekday) || capacity < 1) {
+        return reply.code(400).send({ error: "That start date is not available for this retreat" });
+      }
+      const todayRow = await queryOne<{ d: string }>("SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS d");
+      if (date < (todayRow?.d ?? "")) {
+        return reply.code(400).send({ error: "Choose a start date that is today or later" });
+      }
+      const closed = await queryOne(
+        "SELECT id FROM spa_closures WHERE spa_id = ? AND ? BETWEEN date_from AND date_to",
+        [spa.id, date]
       );
-      if (!slot) return reply.code(400).send({ error: "No start date is listed for that program" });
-      if (Number(slot.booked) + body.partySize > slot.capacity) {
+      if (closed) return reply.code(400).send({ error: "The clinic is closed on that date" });
+
+      const booked = await queryOne<{ n: number }>(
+        `SELECT COALESCE(SUM(party_size), 0) AS n FROM bookings
+         WHERE treatment_id = ? AND DATE(starts_at) = ? AND status_id != ? AND program_batch_id IS NULL`,
+        [treatment.id, date, cancelled]
+      );
+      if (Number(booked?.n ?? 0) + body.partySize > capacity) {
         return reply.code(409).send({ error: "Not enough spots left on that start date" });
       }
-      startsAt = new Date(`${date}T14:00:00Z`); // standard check-in
-      endsAt = new Date(startsAt.getTime() + (treatment.nights ?? 1) * 24 * 3600_000 - 2 * 3600_000);
+      startsAt = new Date(`${date}T14:00:00Z`);
+      endsAt = new Date(
+        startsAt.getTime() + (treatment.duration_days ?? 1) * 24 * 3600_000 - 2 * 3600_000
+      );
+    } else {
+      if (!body.batchId) {
+        return reply.code(400).send({ error: "Choose a time batch" });
+      }
+      const batch = await queryOne<{
+        id: number;
+        startDate: string;
+        startTime: string;
+        endTime: string;
+        capacity: number;
+        booked: number;
+      }>(
+        `SELECT pb.id, DATE_FORMAT(r.start_date, '%Y-%m-%d') AS startDate,
+           TIME_FORMAT(pb.start_time, '%H:%i:%s') AS startTime,
+           TIME_FORMAT(pb.end_time, '%H:%i:%s') AS endTime,
+           pb.capacity,
+           COALESCE((
+             SELECT SUM(b.party_size) FROM bookings b
+             WHERE b.program_batch_id = pb.id AND b.status_id != ?
+           ), 0) AS booked
+         FROM program_batches pb
+         JOIN program_runs r ON r.id = pb.run_id
+         WHERE pb.id = ? AND r.treatment_id = ? AND r.start_date >= CURDATE()`,
+        [cancelled, body.batchId, treatment.id]
+      );
+      if (!batch) return reply.code(400).send({ error: "That time batch is no longer available" });
+      if (Number(batch.booked) + body.partySize > batch.capacity) {
+        return reply.code(409).send({ error: "Not enough spots left in that time batch" });
+      }
+      const lastDay = addIsoDays(batch.startDate, Math.max(1, treatment.duration_days ?? 1) - 1);
+      startsAt = new Date(`${batch.startDate}T${padTime(batch.startTime)}Z`);
+      endsAt = new Date(`${lastDay}T${padTime(batch.endTime)}Z`);
+      programBatchId = batch.id;
     }
 
     // Pricing per payment mode
@@ -282,12 +387,12 @@ export async function bookingRoutes(app: FastifyInstance): Promise<void> {
     const result = await execute(
       `INSERT INTO bookings
         (code, user_id, spa_id, treatment_id, status_id, payment_mode_id, starts_at, ends_at,
-         party_size, total_minor, paid_minor, platform_fee_minor, currency_id, notes)
-       VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?)`,
+         party_size, total_minor, paid_minor, platform_fee_minor, currency_id, program_batch_id, notes)
+       VALUES (?,?,?,?,?,?,?,?,?,?,0,?,?,?,?)`,
       [
         code, request.user!.id, spa.id, treatment.id, statusId, spa.payment_mode_id,
         toMySqlDateTime(startsAt), toMySqlDateTime(endsAt), body.partySize,
-        totalMinor, platformFeeMinor, spa.currency_id, body.notes ?? null,
+        totalMinor, platformFeeMinor, spa.currency_id, programBatchId, body.notes ?? null,
       ]
     );
     const bookingId = result.insertId;

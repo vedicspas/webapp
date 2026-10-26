@@ -14,6 +14,7 @@ import { amenityIdsBySpa, replaceSpaAmenities } from "../lib/spaQueries.js";
 import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { allocateClinicCode, parseBookingRefInput } from "../lib/bookingRefs.js";
 import { loadSpaOwner, notifyClinicSubmitted, notifySpaOwnerForPublish, notifyWelcomeVendor } from "../lib/notify.js";
+import { addIsoDays, loadProgramRuns, maskFromWeekdays, padTime, weekdaysFromMask } from "../lib/treatmentSchedule.js";
 
 function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
   for (const name of names) {
@@ -399,33 +400,24 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       name: string;
       description: string;
       durationMinutes: number | null;
-      nights: number | null;
+      durationDays: number | null;
+      retreatWeekdays: number | null;
+      retreatCapacity: number | null;
       priceMinor: number;
       isActive: number;
     }>(
       `SELECT id, category_id AS categoryId, kind, name, description,
-         duration_minutes AS durationMinutes, nights, price_minor AS priceMinor, is_active AS isActive
+         duration_minutes AS durationMinutes, duration_days AS durationDays,
+         retreat_weekdays AS retreatWeekdays, retreat_capacity AS retreatCapacity,
+         price_minor AS priceMinor, is_active AS isActive
        FROM treatments WHERE spa_id = ? ORDER BY kind, name`,
       [spaId]
     );
     const treatmentIds = treatments.map((t) => t.id);
-    const slotRows =
-      treatmentIds.length === 0
-        ? []
-        : await query<{ id: number; treatmentId: number; startDate: string; capacity: number }>(
-            `SELECT id, treatment_id AS treatmentId,
-               DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate, capacity
-             FROM retreat_slots
-             WHERE treatment_id IN (${treatmentIds.map(() => "?").join(",")})
-             ORDER BY start_date`,
-            treatmentIds
-          );
-    const slotsByTreatment = new Map<number, { id: number; startDate: string; capacity: number }[]>();
-    for (const row of slotRows) {
-      const list = slotsByTreatment.get(row.treatmentId) ?? [];
-      list.push({ id: row.id, startDate: row.startDate, capacity: row.capacity });
-      slotsByTreatment.set(row.treatmentId, list);
-    }
+    const durationByTreatment = new Map(
+      treatments.map((t) => [t.id, Number(t.durationDays ?? 1)])
+    );
+    const programRuns = await loadProgramRuns(treatmentIds, { durationByTreatment });
     const hours = await query(
       `SELECT weekday, TIME_FORMAT(open_time,'%H:%i') AS openTime, TIME_FORMAT(close_time,'%H:%i') AS closeTime
        FROM spa_open_hours WHERE spa_id = ? ORDER BY weekday`,
@@ -452,7 +444,10 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       treatments: treatments.map((t) => ({
         ...t,
         categoryName: staticCache.treatmentCategoryName(t.categoryId),
-        slots: slotsByTreatment.get(t.id) ?? [],
+        durationDays: t.durationDays == null ? null : Number(t.durationDays),
+        retreatWeekdays: weekdaysFromMask(t.retreatWeekdays),
+        retreatCapacity: t.retreatCapacity == null ? null : Number(t.retreatCapacity),
+        programRuns: programRuns.get(t.id) ?? [],
       })),
       openHours: hours,
       photos: photos.map((p) => ({
@@ -581,14 +576,40 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
 
   const treatmentSchema = z.object({
     categoryId: z.number(),
-    kind: z.enum(["session", "retreat"]),
+    kind: z.enum(["session", "retreat", "program"]),
     name: z.string().min(3).max(160),
     description: z.string().default(""),
     durationMinutes: z.number().int().min(15).max(480).nullable().default(null),
-    nights: z.number().int().min(1).max(60).nullable().default(null),
+    durationDays: z.number().int().min(1).max(60).nullable().default(null),
+    retreatWeekdays: z.array(z.number().int().min(0).max(6)).default([]),
+    retreatCapacity: z.number().int().min(1).max(500).nullable().default(null),
     priceMinor: z.number().int().min(0),
     isActive: z.boolean().default(true),
   });
+
+  function treatmentColumns(body: z.infer<typeof treatmentSchema>) {
+    const durationMinutes = body.kind === "session" ? body.durationMinutes : null;
+    const durationDays = body.kind === "session" ? null : body.durationDays;
+    const retreatWeekdays = body.kind === "retreat" ? maskFromWeekdays(body.retreatWeekdays) : null;
+    const retreatCapacity = body.kind === "retreat" ? body.retreatCapacity : null;
+    return { durationMinutes, durationDays, retreatWeekdays, retreatCapacity };
+  }
+
+  function treatmentSaveError(body: z.infer<typeof treatmentSchema>): string | null {
+    if (body.kind === "session" && !body.durationMinutes) {
+      return "Enter a duration of at least 15 minutes.";
+    }
+    if ((body.kind === "retreat" || body.kind === "program") && !body.durationDays) {
+      return "Enter a duration in days.";
+    }
+    if (body.kind === "retreat" && body.retreatWeekdays.length === 0) {
+      return "Choose at least one weekday guests can start on.";
+    }
+    if (body.kind === "retreat" && !body.retreatCapacity) {
+      return "Enter how many people can start each day.";
+    }
+    return null;
+  }
 
   app.post("/vendor/spas/:id/treatments", async (request, reply) => {
     const vendor = await requireVendor(request, reply);
@@ -600,12 +621,17 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     if (!staticCache.treatmentCategory(body.categoryId)) {
       return reply.code(400).send({ error: "Unknown treatment category" });
     }
+    const invalid = treatmentSaveError(body);
+    if (invalid) return reply.code(400).send({ error: invalid });
+    const cols = treatmentColumns(body);
     const result = await execute(
-      `INSERT INTO treatments (spa_id, category_id, kind, name, description, duration_minutes, nights, price_minor, is_active)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
+      `INSERT INTO treatments (spa_id, category_id, kind, name, description, duration_minutes, duration_days,
+         retreat_weekdays, retreat_capacity, price_minor, is_active)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [
         spaId, body.categoryId, body.kind, body.name, body.description,
-        body.durationMinutes, body.nights, body.priceMinor, body.isActive ? 1 : 0,
+        cols.durationMinutes, cols.durationDays, cols.retreatWeekdays, cols.retreatCapacity,
+        body.priceMinor, body.isActive ? 1 : 0,
       ]
     );
     return reply.code(201).send({ id: result.insertId });
@@ -619,15 +645,19 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     if (!staticCache.treatmentCategory(body.categoryId)) {
       return reply.code(400).send({ error: "Unknown treatment category" });
     }
+    const invalid = treatmentSaveError(body);
+    if (invalid) return reply.code(400).send({ error: invalid });
+    const cols = treatmentColumns(body);
 
     const result = await execute(
       `UPDATE treatments t JOIN spas s ON s.id = t.spa_id
        SET t.category_id=?, t.kind=?, t.name=?, t.description=?, t.duration_minutes=?,
-           t.nights=?, t.price_minor=?, t.is_active=?
+           t.duration_days=?, t.retreat_weekdays=?, t.retreat_capacity=?, t.price_minor=?, t.is_active=?
        WHERE t.id = ? AND s.vendor_id = ?`,
       [
-        body.categoryId, body.kind, body.name, body.description, body.durationMinutes,
-        body.nights, body.priceMinor, body.isActive ? 1 : 0, treatmentId, vendor.id,
+        body.categoryId, body.kind, body.name, body.description, cols.durationMinutes,
+        cols.durationDays, cols.retreatWeekdays, cols.retreatCapacity,
+        body.priceMinor, body.isActive ? 1 : 0, treatmentId, vendor.id,
       ]
     );
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Treatment not found" });
@@ -660,61 +690,68 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     return { ok: true };
   });
 
-  app.post("/vendor/treatments/:id/retreat-slots", async (request, reply) => {
+  async function ownedTreatment(
+    treatmentId: number,
+    vendorId: number
+  ): Promise<{ id: number; kind: string; durationDays: number | null } | null> {
+    return queryOne(
+      `SELECT t.id, t.kind, t.duration_days AS durationDays
+       FROM treatments t JOIN spas s ON s.id = t.spa_id
+       WHERE t.id = ? AND s.vendor_id = ?`,
+      [treatmentId, vendorId]
+    );
+  }
+
+  app.post("/vendor/treatments/:id/program-runs", async (request, reply) => {
     const vendor = await requireVendor(request, reply);
     if (!vendor) return;
     const treatmentId = Number((request.params as { id: string }).id);
-    const owned = await queryOne<{ id: number; kind: string }>(
-      "SELECT t.id, t.kind FROM treatments t JOIN spas s ON s.id = t.spa_id WHERE t.id = ? AND s.vendor_id = ?",
-      [treatmentId, vendor.id]
-    );
+    const owned = await ownedTreatment(treatmentId, vendor.id);
     if (!owned) return reply.code(404).send({ error: "Treatment not found" });
-    if (owned.kind !== "retreat") {
-      return reply.code(400).send({ error: "Start dates can only be added to multi-day retreats" });
+    if (owned.kind !== "program") {
+      return reply.code(400).send({ error: "Start dates can only be added to special programs" });
     }
 
     const body = z
-      .object({
-        startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-        capacity: z.number().int().min(1).max(500),
-      })
+      .object({ startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })
       .parse(request.body);
     await execute(
-      `INSERT INTO retreat_slots (treatment_id, start_date, capacity) VALUES (?,?,?)
-       ON DUPLICATE KEY UPDATE capacity = VALUES(capacity)`,
-      [treatmentId, body.startDate, body.capacity]
-    );
-    const slot = await queryOne<{ id: number; startDate: string; capacity: number }>(
-      `SELECT id, DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate, capacity
-       FROM retreat_slots WHERE treatment_id = ? AND start_date = ?`,
+      "INSERT INTO program_runs (treatment_id, start_date) VALUES (?,?) ON DUPLICATE KEY UPDATE start_date = VALUES(start_date)",
       [treatmentId, body.startDate]
     );
-    return reply.code(201).send(slot);
+    const run = await queryOne<{ id: number; startDate: string }>(
+      `SELECT id, DATE_FORMAT(start_date, '%Y-%m-%d') AS startDate
+       FROM program_runs WHERE treatment_id = ? AND start_date = ?`,
+      [treatmentId, body.startDate]
+    );
+    return reply.code(201).send({
+      ...run,
+      treatmentId,
+      endDate: addIsoDays(body.startDate, Math.max(1, Number(owned.durationDays ?? 1)) - 1),
+      batches: [],
+    });
   });
 
-  app.delete("/vendor/treatments/:id/retreat-slots/:slotId", async (request, reply) => {
+  app.delete("/vendor/treatments/:id/program-runs/:runId", async (request, reply) => {
     const vendor = await requireVendor(request, reply);
     if (!vendor) return;
-    const { id, slotId } = request.params as { id: string; slotId: string };
-    const treatmentId = Number(id);
-    const slotPk = Number(slotId);
+    const treatmentId = Number((request.params as { id: string }).id);
+    const runId = Number((request.params as { runId: string }).runId);
+    const owned = await ownedTreatment(treatmentId, vendor.id);
+    if (!owned) return reply.code(404).send({ error: "Treatment not found" });
 
-    const slot = await queryOne<{ id: number; start_date: string }>(
-      `SELECT rs.id, rs.start_date
-       FROM retreat_slots rs
-       JOIN treatments t ON t.id = rs.treatment_id
-       JOIN spas s ON s.id = t.spa_id
-       WHERE rs.id = ? AND rs.treatment_id = ? AND s.vendor_id = ?`,
-      [slotPk, treatmentId, vendor.id]
+    const run = await queryOne<{ id: number; start_date: string }>(
+      "SELECT id, start_date FROM program_runs WHERE id = ? AND treatment_id = ?",
+      [runId, treatmentId]
     );
-    if (!slot) return reply.code(404).send({ error: "Start date not found" });
+    if (!run) return reply.code(404).send({ error: "Start date not found" });
 
     const cancelled = staticCache.bookingStatusByCode("cancelled")?.id;
     const booked = await queryOne<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM bookings
-       WHERE treatment_id = ? AND DATE(starts_at) = ?
-         AND status_id != ?`,
-      [treatmentId, slot.start_date, cancelled ?? 0]
+      `SELECT COUNT(*) AS n FROM bookings b
+       JOIN program_batches pb ON pb.id = b.program_batch_id
+       WHERE pb.run_id = ? AND b.status_id != ?`,
+      [runId, cancelled ?? 0]
     );
     if (Number(booked?.n ?? 0) > 0) {
       return reply.code(409).send({
@@ -722,7 +759,84 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       });
     }
 
-    await execute("DELETE FROM retreat_slots WHERE id = ?", [slotPk]);
+    await execute("DELETE FROM program_runs WHERE id = ?", [runId]);
+    return { ok: true };
+  });
+
+  app.post("/vendor/treatments/:id/program-runs/:runId/batches", async (request, reply) => {
+    const vendor = await requireVendor(request, reply);
+    if (!vendor) return;
+    const treatmentId = Number((request.params as { id: string }).id);
+    const runId = Number((request.params as { runId: string }).runId);
+    const owned = await ownedTreatment(treatmentId, vendor.id);
+    if (!owned) return reply.code(404).send({ error: "Treatment not found" });
+    if (owned.kind !== "program") {
+      return reply.code(400).send({ error: "Time batches can only be added to special programs" });
+    }
+
+    const run = await queryOne<{ id: number }>(
+      "SELECT id FROM program_runs WHERE id = ? AND treatment_id = ?",
+      [runId, treatmentId]
+    );
+    if (!run) return reply.code(404).send({ error: "Start date not found" });
+
+    const body = z
+      .object({
+        label: z.string().max(80).default(""),
+        startTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
+        endTime: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/),
+        capacity: z.number().int().min(1).max(500),
+      })
+      .parse(request.body);
+    const startTime = padTime(body.startTime);
+    const endTime = padTime(body.endTime);
+    if (endTime <= startTime) {
+      return reply.code(400).send({ error: "The batch must end after it starts." });
+    }
+
+    const result = await execute(
+      `INSERT INTO program_batches (run_id, label, start_time, end_time, capacity)
+       VALUES (?,?,?,?,?)`,
+      [runId, body.label.trim(), startTime, endTime, body.capacity]
+    );
+    return reply.code(201).send({
+      id: result.insertId,
+      label: body.label.trim(),
+      startTime: body.startTime.slice(0, 5),
+      endTime: body.endTime.slice(0, 5),
+      capacity: body.capacity,
+      bookedCount: 0,
+    });
+  });
+
+  app.delete("/vendor/treatments/:id/program-batches/:batchId", async (request, reply) => {
+    const vendor = await requireVendor(request, reply);
+    if (!vendor) return;
+    const treatmentId = Number((request.params as { id: string }).id);
+    const batchId = Number((request.params as { batchId: string }).batchId);
+    const owned = await ownedTreatment(treatmentId, vendor.id);
+    if (!owned) return reply.code(404).send({ error: "Treatment not found" });
+
+    const batch = await queryOne<{ id: number }>(
+      `SELECT pb.id FROM program_batches pb
+       JOIN program_runs r ON r.id = pb.run_id
+       WHERE pb.id = ? AND r.treatment_id = ?`,
+      [batchId, treatmentId]
+    );
+    if (!batch) return reply.code(404).send({ error: "Time batch not found" });
+
+    const cancelled = staticCache.bookingStatusByCode("cancelled")?.id;
+    const booked = await queryOne<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM bookings WHERE program_batch_id = ? AND status_id != ?`,
+      [batchId, cancelled ?? 0]
+    );
+    if (Number(booked?.n ?? 0) > 0) {
+      return reply.code(409).send({
+        error: "Guests have already booked this time batch, so it cannot be removed.",
+      });
+    }
+
+    await execute("DELETE FROM program_batches WHERE id = ?", [batchId]);
     return { ok: true };
   });
 

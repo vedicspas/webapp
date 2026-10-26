@@ -30,6 +30,18 @@ export function timeOfDay(iso: string): string {
 
 export const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+export function treatmentDurationLabel(t: {
+  kind: string;
+  durationMinutes: number | null;
+  durationDays?: number | null;
+}): string | null {
+  if (t.kind === "session" && t.durationMinutes) return `${t.durationMinutes} min`;
+  if ((t.kind === "retreat" || t.kind === "program") && t.durationDays) {
+    return `${t.durationDays} day${t.durationDays === 1 ? "" : "s"}`;
+  }
+  return null;
+}
+
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
   full_prepay: "Pay in full online",
   deposit: "Deposit online, rest at the spa",

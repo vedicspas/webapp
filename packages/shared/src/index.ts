@@ -112,7 +112,7 @@ export interface PublicUser {
   email?: string;
 }
 
-export type TreatmentKind = "session" | "retreat";
+export type TreatmentKind = "session" | "retreat" | "program";
 
 export interface Treatment {
   id: number;
@@ -123,7 +123,9 @@ export interface Treatment {
   name: string;
   description: string;
   durationMinutes: number | null; // sessions
-  nights: number | null; // retreats
+  durationDays: number | null; // retreats and special programs
+  retreatWeekdays: number[]; // 0=Sunday … 6=Saturday; retreats only
+  retreatCapacity: number | null; // people starting that weekday
   priceMinor: number;
   isActive: boolean;
 }
@@ -254,12 +256,28 @@ export interface AvailabilitySlot {
   endsAt: string;
 }
 
-export interface RetreatSlot {
+export interface RetreatAvailability {
+  weekdays: number[];
+  capacity: number;
+  durationDays: number;
+  remainingByDate: Record<string, number>;
+}
+
+export interface ProgramBatch {
+  id: number;
+  label: string;
+  startTime: string; // HH:mm
+  endTime: string;
+  capacity: number;
+  bookedCount: number;
+}
+
+export interface ProgramRun {
   id: number;
   treatmentId: number;
   startDate: string; // YYYY-MM-DD
-  capacity: number;
-  bookedCount: number;
+  endDate: string;
+  batches: ProgramBatch[];
 }
 
 export interface Booking {

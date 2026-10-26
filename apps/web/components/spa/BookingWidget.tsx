@@ -6,11 +6,12 @@ import { useSession } from "next-auth/react";
 import type {
   AvailabilitySlot,
   CreateBookingResponse,
-  RetreatSlot,
+  ProgramRun,
+  RetreatAvailability,
   SpaDetail,
   Treatment,
 } from "@vedic/shared";
-import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay } from "@/lib/format";
+import { money, PAYMENT_MODE_LABELS, shortDate, timeOfDay, treatmentDurationLabel } from "@/lib/format";
 import { toast } from "@/stores/toastStore";
 import { PaymentForm } from "./PaymentForm";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
@@ -19,6 +20,17 @@ import { DateField } from "@/components/DateField";
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
 type Step = "pick" | "pay" | "done";
+
+function batchLabel(batch: { label: string; startTime: string; endTime: string }): string {
+  const times = `${batch.startTime}–${batch.endTime}`;
+  return batch.label.trim() ? `${batch.label.trim()} (${times})` : times;
+}
+
+function addMonths(from: Date, months: number): Date {
+  const d = new Date(from);
+  d.setMonth(d.getMonth() + months);
+  return d;
+}
 
 export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const { data: session } = useSession();
@@ -30,14 +42,18 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
   const [treatments, setTreatments] = useState<Treatment[]>(spa.treatments);
   const [date, setDate] = useState("");
   const [slots, setSlots] = useState<AvailabilitySlot[]>([]);
-  const [retreatSlots, setRetreatSlots] = useState<RetreatSlot[]>([]);
+  const [retreatAvail, setRetreatAvail] = useState<RetreatAvailability | null>(null);
+  const [programRuns, setProgramRuns] = useState<ProgramRun[]>([]);
   const [selectedStart, setSelectedStart] = useState<string | null>(null);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
   const [partySize, setPartySize] = useState(1);
   const [loading, setLoading] = useState(false);
   const [step, setStep] = useState<Step>("pick");
   const [result, setResult] = useState<CreateBookingResponse | null>(null);
 
   const treatment: Treatment | undefined = treatments.find((t) => t.id === treatmentId);
+  const selectedRun = programRuns.find((r) => r.startDate === selectedStart);
+  const selectedBatch = selectedRun?.batches.find((b) => b.id === selectedBatchId);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,23 +75,39 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
     };
   }, [spa.slug]);
 
-  // Load availability whenever treatment/date changes. Selection resets are
-  // handled in the select/date change handlers.
   useEffect(() => {
     if (!treatment) return;
 
     if (treatment.kind === "retreat") {
-      fetch(`${API_URL}/treatments/${treatment.id}/retreat-slots`)
+      fetch(`${API_URL}/treatments/${treatment.id}/retreat-availability`)
         .then((r) => r.json())
-        .then(setRetreatSlots)
-        .catch(() => setRetreatSlots([]));
+        .then((data) => setRetreatAvail(data && typeof data === "object" ? data : null))
+        .catch(() => setRetreatAvail(null));
+      setSlots([]);
+      setProgramRuns([]);
+    } else if (treatment.kind === "program") {
+      fetch(`${API_URL}/treatments/${treatment.id}/program-runs`)
+        .then((r) => r.json())
+        .then((data) => setProgramRuns(Array.isArray(data) ? data : []))
+        .catch(() => setProgramRuns([]));
+      setSlots([]);
+      setRetreatAvail(null);
     } else if (date) {
       fetch(`${API_URL}/spas/${spa.slug}/availability?treatmentId=${treatment.id}&date=${date}`)
         .then((r) => r.json())
         .then((data) => setSlots(Array.isArray(data) ? data : []))
         .catch(() => setSlots([]));
+      setRetreatAvail(null);
+      setProgramRuns([]);
     }
   }, [treatment, date, spa.slug]);
+
+  useEffect(() => {
+    if (treatment?.kind !== "program") return;
+    if (programRuns.length === 1 && selectedStart !== programRuns[0].startDate) {
+      setSelectedStart(programRuns[0].startDate);
+    }
+  }, [treatment?.kind, programRuns, selectedStart]);
 
   const totalMinor = treatment ? treatment.priceMinor * partySize : 0;
   const payNow = useMemo(() => {
@@ -92,12 +124,29 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
     }
   }, [treatment, totalMinor, spa]);
 
+  const retreatRemaining = date && retreatAvail ? retreatAvail.remainingByDate[date] ?? 0 : 0;
+  const batchRemaining = selectedBatch
+    ? selectedBatch.capacity - selectedBatch.bookedCount
+    : 0;
+  const canReserve =
+    Boolean(treatment) &&
+    !loading &&
+    (treatment?.kind === "session"
+      ? Boolean(selectedStart)
+      : treatment?.kind === "retreat"
+        ? Boolean(date) && retreatRemaining >= partySize
+        : Boolean(selectedStart && selectedBatchId) && batchRemaining >= partySize);
+
   async function book() {
     if (!session?.apiToken) {
       router.push("/auth/signin");
       return;
     }
-    if (!treatment || !selectedStart) return;
+    if (!treatment) return;
+    const startsAt =
+      treatment.kind === "session" ? selectedStart : treatment.kind === "retreat" ? date : selectedStart;
+    if (!startsAt) return;
+    if (treatment.kind === "program" && !selectedBatchId) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_URL}/bookings`, {
@@ -108,8 +157,9 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
         },
         body: JSON.stringify({
           treatmentId: treatment.id,
-          startsAt: selectedStart,
+          startsAt,
           partySize,
+          ...(treatment.kind === "program" ? { batchId: selectedBatchId } : {}),
         }),
       });
       const data = await res.json();
@@ -133,7 +183,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           <TreatmentCaption name={result.booking.treatmentName} categoryName={result.booking.treatmentCategoryName} />
           {" "}at {result.booking.spaName} on{" "}
           <strong>{shortDate(result.booking.startsAt)}</strong>
-          {result.booking.treatmentKind === "session" ? (
+          {result.booking.treatmentKind === "session" || result.booking.treatmentKind === "program" ? (
             <> at {timeOfDay(result.booking.startsAt)}</>
           ) : null}
           .
@@ -187,19 +237,25 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
           onChange={(e) => {
             setTreatmentId(Number(e.target.value));
             setSelectedStart(null);
+            setSelectedBatchId(null);
             setDate("");
+            setRetreatAvail(null);
+            setProgramRuns([]);
           }}
           className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
         >
-          {treatments.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name}
-              {t.categoryName ? ` - ${t.categoryName}` : ""}
-              {" — "}
-              {money(t.priceMinor, spa.currencyCode)}
-              {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : ""}
-            </option>
-          ))}
+          {treatments.map((t) => {
+            const duration = treatmentDurationLabel(t);
+            return (
+              <option key={t.id} value={t.id}>
+                {t.name}
+                {t.categoryName ? ` - ${t.categoryName}` : ""}
+                {" — "}
+                {money(t.priceMinor, spa.currencyCode)}
+                {duration ? ` · ${duration}` : ""}
+              </option>
+            );
+          })}
         </select>
       </label>
       )}
@@ -244,34 +300,93 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
             </div>
           ) : null}
         </>
-      ) : treatment ? (
+      ) : treatment?.kind === "retreat" ? (
         <div className="mt-3">
-          <label className="block text-sm font-medium">
-            Start date
-            <select
-              value={selectedStart ?? ""}
-              onChange={(e) => setSelectedStart(e.target.value || null)}
-              className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
-            >
-              <option value="">Choose a start date</option>
-              {retreatSlots.map((slot) => {
-                const left = slot.capacity - slot.bookedCount;
-                return (
-                  <option key={slot.id} value={slot.startDate} disabled={left <= 0}>
-                    {shortDate(slot.startDate)}
-                    {left > 0 ? ` · ${left} spot${left === 1 ? "" : "s"} available` : " · full"}
-                  </option>
-                );
-              })}
-            </select>
-          </label>
+          <p className="text-sm font-medium">Start date</p>
+          <DateField
+            value={date}
+            minDate="today"
+            maxDate={addMonths(new Date(), 6)}
+            isDateEnabled={(iso) => (retreatAvail?.remainingByDate[iso] ?? 0) >= partySize}
+            onChange={(next) => {
+              setDate(next);
+              setSelectedStart(next);
+            }}
+          />
           <p className="mt-1.5 text-xs text-foreground/55">
-            This is a {treatment.nights}-night stay at the clinic. Pick a start date the clinic has
-            opened for this program.
+            This is a {treatment.durationDays}-day stay. You can start on the weekdays the clinic has
+            opened for this retreat.
           </p>
-          {retreatSlots.length === 0 ? (
-            <p className="mt-1 text-sm text-foreground/60">No start dates are listed yet.</p>
+          {date && retreatAvail ? (
+            <p className="mt-1 text-sm text-foreground/70">
+              {retreatRemaining > 0
+                ? `${retreatRemaining} spot${retreatRemaining === 1 ? "" : "s"} available on this start date.`
+                : "That start date is full."}
+            </p>
           ) : null}
+        </div>
+      ) : treatment?.kind === "program" ? (
+        <div className="mt-3">
+          {programRuns.length > 1 ? (
+            <label className="block text-sm font-medium">
+              Start date
+              <select
+                value={selectedStart ?? ""}
+                onChange={(e) => {
+                  setSelectedStart(e.target.value || null);
+                  setSelectedBatchId(null);
+                }}
+                className="mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm"
+              >
+                <option value="">Choose a start date</option>
+                {programRuns.map((run) => (
+                  <option key={run.id} value={run.startDate}>
+                    {shortDate(run.startDate)}
+                    {run.endDate !== run.startDate ? ` – ${shortDate(run.endDate)}` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : programRuns.length === 1 ? (
+            <p className="text-sm text-foreground/70">
+              Starts {shortDate(programRuns[0].startDate)}
+              {programRuns[0].endDate !== programRuns[0].startDate
+                ? ` · ${treatment.durationDays} days`
+                : ""}
+            </p>
+          ) : (
+            <p className="text-sm text-foreground/60">No upcoming dates are listed for this program.</p>
+          )}
+          {selectedRun ? (
+            <div className="mt-3">
+              <p className="text-sm font-medium">Time batch</p>
+              <div className="mt-1 grid gap-1.5">
+                {selectedRun.batches.map((batch) => {
+                  const left = batch.capacity - batch.bookedCount;
+                  return (
+                    <button
+                      key={batch.id}
+                      type="button"
+                      disabled={left < partySize}
+                      onClick={() => setSelectedBatchId(batch.id)}
+                      className={`rounded-lg px-3 py-2 text-left text-sm ${
+                        selectedBatchId === batch.id
+                          ? "bg-veda-700 text-white"
+                          : "border border-veda-200 hover:bg-veda-50"
+                      } disabled:cursor-not-allowed disabled:opacity-50`}
+                    >
+                      {batchLabel(batch)}
+                      {" · "}
+                      {left > 0 ? `${left} spot${left === 1 ? "" : "s"}` : "full"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <p className="mt-1.5 text-xs text-foreground/55">
+            This is a {treatment.durationDays}-day program. Pick a start date and a time batch.
+          </p>
         </div>
       ) : null}
 
@@ -309,7 +424,7 @@ export function BookingWidget({ spa }: { spa: SpaDetail }) {
       ) : null}
 
       <button
-        disabled={!treatment || !selectedStart || loading}
+        disabled={!canReserve}
         onClick={book}
         className="mt-4 w-full rounded-full bg-turmeric-400 py-2.5 font-semibold text-veda-900 transition hover:bg-turmeric-300 disabled:cursor-not-allowed disabled:opacity-50"
       >

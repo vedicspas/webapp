@@ -10,7 +10,7 @@ import { BookingWidget } from "@/components/spa/BookingWidget";
 import { ReviewsSection } from "@/components/spa/ReviewsSection";
 import { QASection } from "@/components/spa/QASection";
 import { ShopSection } from "@/components/spa/ShopSection";
-import { WEEKDAYS, formatSpaAddress, formatSpaLocality, money } from "@/lib/format";
+import { WEEKDAYS, formatSpaAddress, formatSpaLocality, money, treatmentDurationLabel } from "@/lib/format";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { SpaLocationLink, SpaLocationPreview, SpaLocationProvider } from "@/components/spa/SpaLocation";
 import { ShareListing } from "@/components/spa/ShareListing";
@@ -148,8 +148,10 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
                   </p>
                   <p className="mt-0.5 text-sm text-foreground/60">
                     {money(t.priceMinor, spa.currencyCode)}
-                    {t.kind === "session" && t.durationMinutes ? ` · ${t.durationMinutes} min` : null}
-                    {t.kind === "retreat" && t.nights ? ` · ${t.nights} nights` : null}
+                    {(() => {
+                      const duration = treatmentDurationLabel(t);
+                      return duration ? ` · ${duration}` : null;
+                    })()}
                   </p>
                 </li>
               ))}

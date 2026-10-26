@@ -279,28 +279,33 @@ async function main() {
   interface TreatmentSeed {
     spa: string;
     cat: string;
-    kind: "session" | "retreat";
+    kind: "session" | "retreat" | "program";
     name: string;
     minutes?: number;
-    nights?: number;
+    days?: number;
+    weekdays?: number;
+    capacity?: number;
     priceMinor: number;
   }
+
+  const weekdayMaskMonFri = 2 + 4 + 8 + 16 + 32;
 
   const treatments: TreatmentSeed[] = [
     { spa: "ganga-veda-rishikesh", cat: "abhyanga", kind: "session", name: "Traditional Abhyanga (60 min)", minutes: 60, priceMinor: 4500 },
     { spa: "ganga-veda-rishikesh", cat: "shirodhara", kind: "session", name: "Shirodhara Oil Flow (45 min)", minutes: 45, priceMinor: 5500 },
-    { spa: "ganga-veda-rishikesh", cat: "panchakarma", kind: "retreat", name: "7-Night Panchakarma Immersion", nights: 7, priceMinor: 89000 },
-    { spa: "ganga-veda-rishikesh", cat: "yoga-retreat", kind: "retreat", name: "5-Night Yoga & Ayurveda Retreat", nights: 5, priceMinor: 64000 },
+    { spa: "ganga-veda-rishikesh", cat: "panchakarma", kind: "retreat", name: "7-Day Panchakarma Immersion", days: 7, weekdays: weekdayMaskMonFri, capacity: 8, priceMinor: 89000 },
+    { spa: "ganga-veda-rishikesh", cat: "yoga-retreat", kind: "retreat", name: "5-Day Yoga & Ayurveda Retreat", days: 5, weekdays: weekdayMaskMonFri, capacity: 8, priceMinor: 64000 },
     { spa: "kerala-roots-kochi", cat: "consultation", kind: "session", name: "Ayurvedic Doctor Consultation (30 min)", minutes: 30, priceMinor: 2500 },
-    { spa: "kerala-roots-kochi", cat: "panchakarma", kind: "retreat", name: "14-Night Classical Panchakarma", nights: 14, priceMinor: 179000 },
+    { spa: "kerala-roots-kochi", cat: "panchakarma", kind: "retreat", name: "14-Day Classical Panchakarma", days: 14, weekdays: weekdayMaskMonFri, capacity: 6, priceMinor: 179000 },
+    { spa: "kerala-roots-kochi", cat: "panchakarma", kind: "program", name: "Rasayana Special Program", days: 3, priceMinor: 45000 },
     { spa: "kerala-roots-kochi", cat: "abhyanga", kind: "session", name: "Abhyanga + Steam (90 min)", minutes: 90, priceMinor: 6000 },
     { spa: "palm-shala-goa", cat: "abhyanga", kind: "session", name: "Beachside Abhyanga (60 min)", minutes: 60, priceMinor: 4000 },
     { spa: "palm-shala-goa", cat: "shirodhara", kind: "session", name: "Shirodhara Deep Rest (60 min)", minutes: 60, priceMinor: 5000 },
-    { spa: "palm-shala-goa", cat: "yoga-retreat", kind: "retreat", name: "3-Night Weekend Reset", nights: 3, priceMinor: 39000 },
+    { spa: "palm-shala-goa", cat: "yoga-retreat", kind: "retreat", name: "3-Day Weekend Reset", days: 3, weekdays: 1 + 32 + 64, capacity: 10, priceMinor: 39000 },
     { spa: "ceylon-veda-colombo", cat: "consultation", kind: "session", name: "Dosha Assessment (45 min)", minutes: 45, priceMinor: 3000 },
     { spa: "ceylon-veda-colombo", cat: "marma", kind: "session", name: "Marma Point Therapy (75 min)", minutes: 75, priceMinor: 6500 },
     { spa: "ubud-prana-retreat", cat: "abhyanga", kind: "session", name: "Prana Abhyanga (90 min)", minutes: 90, priceMinor: 7000 },
-    { spa: "ubud-prana-retreat", cat: "detox-retreat", kind: "retreat", name: "10-Night Jungle Detox", nights: 10, priceMinor: 129000 },
+    { spa: "ubud-prana-retreat", cat: "detox-retreat", kind: "retreat", name: "10-Day Jungle Detox", days: 10, weekdays: weekdayMaskMonFri, capacity: 8, priceMinor: 129000 },
     { spa: "red-rock-veda-sedona", cat: "marma", kind: "session", name: "Marma & Sound Healing (90 min)", minutes: 90, priceMinor: 12000 },
     { spa: "red-rock-veda-sedona", cat: "udvartana", kind: "session", name: "Udvartana Herbal Scrub (60 min)", minutes: 60, priceMinor: 9500 },
   ];
@@ -308,29 +313,39 @@ async function main() {
   const treatmentIds: number[] = [];
   for (const t of treatments) {
     const id = await insert(
-      `INSERT INTO treatments (spa_id, category_id, kind, name, description, duration_minutes, nights, price_minor)
-       VALUES (?,?,?,?,?,?,?,?)`,
+      `INSERT INTO treatments (spa_id, category_id, kind, name, description, duration_minutes, duration_days,
+         retreat_weekdays, retreat_capacity, price_minor)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
       [
         spaIds.get(t.spa),
         categoryIds.get(t.cat),
         t.kind,
         t.name,
-        `A signature ${t.kind === "retreat" ? "residential program" : "treatment"} at our center. Includes a personal consultation and herbal preparations suited to your dosha.`,
+        `A signature ${t.kind === "session" ? "treatment" : "residential program"} at our center. Includes a personal consultation and herbal preparations suited to your dosha.`,
         t.minutes ?? null,
-        t.nights ?? null,
+        t.days ?? null,
+        t.weekdays ?? null,
+        t.capacity ?? null,
         t.priceMinor,
       ]
     );
     treatmentIds.push(id);
 
-    if (t.kind === "retreat") {
-      // Monthly departures for the next 6 months
+    if (t.kind === "program") {
       const now = new Date();
-      for (let m = 1; m <= 6; m++) {
-        const d = new Date(now.getFullYear(), now.getMonth() + m, 7);
+      for (let m = 1; m <= 4; m++) {
+        const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + m, 15));
+        const runId = await insert(
+          "INSERT INTO program_runs (treatment_id, start_date) VALUES (?,?)",
+          [id, d.toISOString().slice(0, 10)]
+        );
         await execute(
-          "INSERT INTO retreat_slots (treatment_id, start_date, capacity) VALUES (?,?,?)",
-          [id, d.toISOString().slice(0, 10), 8]
+          "INSERT INTO program_batches (run_id, label, start_time, end_time, capacity) VALUES (?,?,?,?,?)",
+          [runId, "Morning batch", "09:00:00", "12:00:00", 12]
+        );
+        await execute(
+          "INSERT INTO program_batches (run_id, label, start_time, end_time, capacity) VALUES (?,?,?,?,?)",
+          [runId, "Afternoon batch", "13:00:00", "16:00:00", 12]
         );
       }
     }
@@ -405,7 +420,7 @@ async function main() {
   );
   await execute(
     "INSERT INTO answers (question_id, user_id, is_vendor, body) VALUES (?,?,?,?)",
-    [q1, vendorUser1, 1, "Yes \u2014 7 nights is our recommended introduction. The doctor adapts the intensity after your initial consultation."]
+    [q1, vendorUser1, 1, "Yes \u2014 7 days is our recommended introduction. The doctor adapts the intensity after your initial consultation."]
   );
 
   await execute("INSERT INTO wishlist_items (user_id, spa_id) VALUES (?,?), (?,?)", [

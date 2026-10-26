@@ -6,7 +6,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   contact_messages, site_settings,
-  review_moderation_events, review_photos, review_responses, reviews, bookings, retreat_slots, treatments,
+  review_moderation_events, review_photos, review_responses, reviews, bookings, program_batches, program_runs, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
   spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
   users, booking_statuses, payment_modes, treatment_categories, amenities,
@@ -289,18 +289,20 @@ CREATE TABLE spa_closures (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
--- Treatments (time-slot sessions and multi-day retreats)
+-- Treatments (sessions, weekday-start retreats, dated special programs)
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE treatments (
   id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   spa_id BIGINT UNSIGNED NOT NULL,
   category_id SMALLINT UNSIGNED NOT NULL,
-  kind ENUM('session','retreat') NOT NULL DEFAULT 'session',
+  kind ENUM('session','retreat','program') NOT NULL DEFAULT 'session',
   name VARCHAR(160) NOT NULL,
   description TEXT NOT NULL,
   duration_minutes SMALLINT UNSIGNED NULL, -- sessions only
-  nights TINYINT UNSIGNED NULL,            -- retreats only
+  duration_days TINYINT UNSIGNED NULL,     -- retreats and special programs
+  retreat_weekdays TINYINT UNSIGNED NULL,  -- bitmask, bit 0 = Sunday
+  retreat_capacity SMALLINT UNSIGNED NULL, -- people starting a given weekday
   price_minor INT UNSIGNED NOT NULL,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
   KEY idx_treatment_spa (spa_id),
@@ -315,6 +317,25 @@ CREATE TABLE retreat_slots (
   capacity SMALLINT UNSIGNED NOT NULL,
   UNIQUE KEY uq_retreat_slot (treatment_id, start_date),
   CONSTRAINT fk_rslot_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE program_runs (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  treatment_id BIGINT UNSIGNED NOT NULL,
+  start_date DATE NOT NULL,
+  UNIQUE KEY uq_program_run (treatment_id, start_date),
+  CONSTRAINT fk_prun_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE program_batches (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  run_id BIGINT UNSIGNED NOT NULL,
+  label VARCHAR(80) NOT NULL DEFAULT '',
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  capacity SMALLINT UNSIGNED NOT NULL,
+  KEY idx_pbatch_run (run_id),
+  CONSTRAINT fk_pbatch_run FOREIGN KEY (run_id) REFERENCES program_runs(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
@@ -337,6 +358,7 @@ CREATE TABLE bookings (
   platform_fee_minor INT UNSIGNED NOT NULL DEFAULT 0,
   currency_id TINYINT UNSIGNED NOT NULL,
   stripe_payment_intent_id VARCHAR(64) NULL,
+  program_batch_id BIGINT UNSIGNED NULL,
   notes TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_booking_user (user_id),
@@ -346,7 +368,8 @@ CREATE TABLE bookings (
   CONSTRAINT fk_booking_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id),
   CONSTRAINT fk_booking_status FOREIGN KEY (status_id) REFERENCES booking_statuses(id),
   CONSTRAINT fk_booking_payment_mode FOREIGN KEY (payment_mode_id) REFERENCES payment_modes(id),
-  CONSTRAINT fk_booking_currency FOREIGN KEY (currency_id) REFERENCES currencies(id)
+  CONSTRAINT fk_booking_currency FOREIGN KEY (currency_id) REFERENCES currencies(id),
+  CONSTRAINT fk_booking_pbatch FOREIGN KEY (program_batch_id) REFERENCES program_batches(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE payment_events (
