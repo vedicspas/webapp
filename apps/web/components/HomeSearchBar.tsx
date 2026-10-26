@@ -106,7 +106,7 @@ export function HomeSearchBar() {
             if (q.trim().length >= 2 && suggestions.length > 0) setOpen(true);
           }}
           onKeyDown={onKeyDown}
-          placeholder="Search spas, treatments, destinations..."
+          placeholder="What are you looking for? | Where? | How long?"
           className="w-full px-5 py-3.5 text-veda-900 outline-none"
           role="combobox"
           aria-autocomplete="list"

@@ -20,11 +20,10 @@ export default async function HomePage() {
       <section className="bg-veda-800 px-4 pb-16 pt-12 text-white">
         <div className="mx-auto max-w-3xl text-center">
           <h1 className="text-3xl font-bold leading-tight sm:text-5xl">
-            Find your place to heal
+            Find Ayurvedic care that fits your needs
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-veda-100 sm:text-lg">
-            Authentic Ayurvedic spas, panchakarma centers and wellness retreats — reviewed by
-            travelers, bookable in minutes.
+            Compare clinics, treatments, stays, and practical details before you travel.
           </p>
           <div className="mt-6">
             <HomeSearchBar />
@@ -62,7 +61,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-4 py-10">
+      <section className="mx-auto max-w-6xl px-4 py-6">
         <div className="mb-4 flex items-baseline justify-between">
           <h2 className="text-xl font-semibold text-veda-900">Top rated centers</h2>
           <Link href="/spas" className="text-sm text-veda-600 hover:underline">
