@@ -18,11 +18,11 @@ export default async function HomePage() {
   return (
     <div>
       <section className="bg-veda-800 px-4 pb-16 pt-12 text-white">
-        <div className="mx-auto max-w-3xl text-center">
+        <div className="mx-auto max-w-6xl text-center">
           <h1 className="text-3xl font-bold leading-tight sm:text-5xl">
             Find Ayurvedic care that fits your needs
           </h1>
-          <p className="mx-auto mt-3 max-w-xl text-veda-100 sm:text-lg">
+          <p className="mt-3 text-veda-100 sm:text-lg">
             Compare clinics, treatments, stays, and practical details before you travel.
           </p>
           <div className="mt-6">
