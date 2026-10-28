@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
 import {
@@ -472,6 +472,8 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     );
   }
 
+  const [onlinePayCol] = await conn.query("SHOW COLUMNS FROM payment_modes LIKE 'requires_online_payment'");
+  const addingOnlinePayCol = Array.isArray(onlinePayCol) && onlinePayCol.length === 0;
   await run(
     conn,
     "ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS requires_online_payment TINYINT(1) NOT NULL DEFAULT 0"
@@ -480,14 +482,28 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     "UPDATE payment_modes SET requires_online_payment = 1 WHERE code IN ('full_prepay', 'deposit', 'booking_fee')"
   );
   await conn.query("UPDATE payment_modes SET requires_online_payment = 0 WHERE code = 'pay_at_spa'");
-  await conn.query(
-    `UPDATE spas
-     SET payment_mode_id = (SELECT id FROM payment_modes WHERE code = 'pay_at_spa' LIMIT 1),
-         deposit_bps = NULL,
-         booking_fee_minor = NULL`
-  );
+  if (addingOnlinePayCol) {
+    await conn.query(
+      `UPDATE spas
+       SET payment_mode_id = (SELECT id FROM payment_modes WHERE code = 'pay_at_spa' LIMIT 1),
+           deposit_bps = NULL,
+           booking_fee_minor = NULL`
+    );
+  }
 
   console.log("Schema patches applied.");
+}
+
+export async function applySchemaPatches(): Promise<void> {
+  const conn = await mysql.createConnection({
+    ...config.db,
+    multipleStatements: true,
+  });
+  try {
+    await applyPatches(conn);
+  } finally {
+    await conn.end();
+  }
 }
 
 async function main() {
@@ -512,7 +528,10 @@ async function main() {
   console.log("Schema applied.");
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const invokedDirectly = resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1] ?? "");
+if (invokedDirectly) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

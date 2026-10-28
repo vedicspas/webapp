@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { config } from "./config.js";
 import { CLAIM_DOC_DIR } from "./lib/uploads.js";
 import { staticCache } from "./cache/staticCache.js";
+import { applySchemaPatches } from "./db/migrate.js";
 import { optionalAuth } from "./plugins/auth.js";
 import { metaRoutes } from "./routes/meta.js";
 import { authRoutes } from "./routes/auth.js";
@@ -50,6 +51,8 @@ async function main() {
     prefix: "/uploads/",
     decorateReply: false,
   });
+
+  await applySchemaPatches();
 
   // Load static lookup tables into memory before accepting traffic.
   await staticCache.reload();
