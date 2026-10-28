@@ -4,6 +4,8 @@ import type {
   City,
   Country,
   Currency,
+  MedicalCondition,
+  MedicalConditionCategory,
   NamedLookup,
   PaymentMode,
   Role,
@@ -31,6 +33,8 @@ class StaticCache {
   languages: NamedLookup[] = [];
   dietaryOptions: NamedLookup[] = [];
   accommodationTypes: NamedLookup[] = [];
+  medicalConditionCategories: MedicalConditionCategory[] = [];
+  medicalConditions: MedicalCondition[] = [];
   siteSettings: SiteSettings = { contactEmail: null, contactPhone: null };
 
   private byId = {
@@ -40,6 +44,7 @@ class StaticCache {
     paymentModes: new Map<number, PaymentMode>(),
     bookingStatuses: new Map<number, BookingStatus>(),
     treatmentCategories: new Map<number, TreatmentCategory>(),
+    medicalConditionsByName: new Map<string, MedicalCondition>(),
   };
 
   async reload(): Promise<void> {
@@ -55,6 +60,8 @@ class StaticCache {
       languages,
       dietaryOptions,
       accommodationTypes,
+      medicalConditionCategories,
+      medicalConditions,
     ] = await Promise.all([
       query<Country>("SELECT id, iso2, name FROM countries ORDER BY name"),
       query<City>(
@@ -71,6 +78,19 @@ class StaticCache {
       query<NamedLookup>("SELECT id, name FROM languages ORDER BY name").catch(() => []),
       query<NamedLookup>("SELECT id, name FROM dietary_options ORDER BY name").catch(() => []),
       query<NamedLookup>("SELECT id, name FROM accommodation_types ORDER BY name").catch(() => []),
+      query<MedicalConditionCategory>(
+        `SELECT id, name, sort_order AS sortOrder
+         FROM medical_condition_categories
+         WHERE is_deleted = 0
+         ORDER BY sort_order, name`
+      ).catch(() => []),
+      query<MedicalCondition>(
+        `SELECT mc.id, mc.category_id AS categoryId, mc.name
+         FROM medical_conditions mc
+         JOIN medical_condition_categories c ON c.id = mc.category_id
+         WHERE mc.is_deleted = 0 AND c.is_deleted = 0
+         ORDER BY mc.name`
+      ).catch(() => []),
     ]);
 
     this.countries = countries;
@@ -88,6 +108,8 @@ class StaticCache {
     this.languages = languages;
     this.dietaryOptions = dietaryOptions;
     this.accommodationTypes = accommodationTypes;
+    this.medicalConditionCategories = medicalConditionCategories;
+    this.medicalConditions = medicalConditions;
     await this.reloadSiteSettings();
 
     this.byId.countries = new Map(countries.map((c) => [c.id, c]));
@@ -96,6 +118,13 @@ class StaticCache {
     this.byId.paymentModes = new Map(modes.map((m) => [m.id, m]));
     this.byId.bookingStatuses = new Map(statuses.map((s) => [s.id, s]));
     this.byId.treatmentCategories = new Map(this.treatmentCategories.map((c) => [c.id, c]));
+    this.byId.medicalConditionsByName = new Map(
+      medicalConditions.map((c) => [c.name.toLowerCase(), c])
+    );
+  }
+
+  medicalConditionByName(name: string): MedicalCondition | undefined {
+    return this.byId.medicalConditionsByName.get(name.trim().toLowerCase());
   }
 
   treatmentCategory(id: number): TreatmentCategory | undefined {
@@ -181,6 +210,8 @@ class StaticCache {
       languages: this.languages,
       dietaryOptions: this.dietaryOptions,
       accommodationTypes: this.accommodationTypes,
+      medicalConditionCategories: this.medicalConditionCategories,
+      medicalConditions: this.medicalConditions,
       turnstileSiteKey: turnstileSiteKey(),
     };
   }

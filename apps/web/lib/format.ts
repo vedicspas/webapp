@@ -42,6 +42,8 @@ export function treatmentDurationLabel(t: {
   return null;
 }
 
+export { normalizeTreatmentDescription, treatmentDescriptionParagraphs } from "@vedic/shared";
+
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
   full_prepay: "Pay in full online",
   deposit: "Deposit online, rest at the spa",

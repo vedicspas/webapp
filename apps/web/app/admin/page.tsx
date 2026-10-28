@@ -455,6 +455,9 @@ export default function AdminPage() {
           <Link href="/admin/accommodation-types" className="text-veda-700 underline hover:text-veda-900">
             Accommodation types
           </Link>
+          <Link href="/admin/medical-conditions" className="text-veda-700 underline hover:text-veda-900">
+            Medical conditions
+          </Link>
           <Link href="/admin/settings" className="text-veda-700 underline hover:text-veda-900">
             Site settings
           </Link>

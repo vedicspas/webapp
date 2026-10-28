@@ -3,12 +3,14 @@
 import { useMemo, useRef, useState } from "react";
 
 export function TagInput({
+  id,
   values,
   onChange,
   suggestions,
   placeholder,
   allowCreate = true,
 }: {
+  id?: string;
   values: string[];
   onChange: (next: string[]) => void;
   suggestions: string[];
@@ -53,7 +55,13 @@ export function TagInput({
   }
 
   return (
-    <div className="rounded-lg border border-veda-200 bg-white px-2 py-1.5 focus-within:border-veda-500 focus-within:ring-2 focus-within:ring-veda-200">
+    <div
+      className="rounded-lg border border-veda-200 bg-white px-2 py-1.5 focus-within:border-veda-500 focus-within:ring-2 focus-within:ring-veda-200"
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button")) return;
+        inputRef.current?.focus();
+      }}
+    >
       <div className="flex flex-wrap gap-1.5">
         {values.map((tag) => (
           <span
@@ -72,6 +80,7 @@ export function TagInput({
           </span>
         ))}
         <input
+          id={id}
           ref={inputRef}
           value={query}
           placeholder={values.length === 0 ? placeholder : ""}

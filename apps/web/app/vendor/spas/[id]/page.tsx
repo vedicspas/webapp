@@ -1,16 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useApi } from "@/lib/useApi";
 import { useMetaStore } from "@/stores/metaStore";
-import { PAYMENT_MODE_LABELS, WEEKDAYS, ON_REQUEST_LABELS } from "@/lib/format";
+import { PAYMENT_MODE_LABELS, WEEKDAYS, ON_REQUEST_LABELS, normalizeTreatmentDescription } from "@/lib/format";
 import { RemotePhoto } from "@/components/RemotePhoto";
 import { DollarInput, PostfixInput } from "@/components/AffixedInput";
+import { ExpandingTextarea } from "@/components/ExpandingTextarea";
 import { TagInput } from "@/components/TagInput";
 import { toast } from "@/stores/toastStore";
 import { easeScrollTo } from "@/lib/smoothScroll";
 import { DateField } from "@/components/DateField";
+import { VendorEditNav } from "@/components/vendor/VendorEditNav";
 import type { OnRequestFlag, StaticMeta } from "@vedic/shared";
 
 interface VendorProgramBatch {
@@ -45,6 +47,7 @@ interface VendorTreatment {
   retreatCapacity: number | null;
   priceMinor: number;
   isActive: boolean;
+  medicalConditions: string[];
   programRuns: VendorProgramRun[];
   newRunDate: string;
 }
@@ -66,6 +69,7 @@ function blankTreatment(categoryId: number): VendorTreatment {
     retreatCapacity: 8,
     priceMinor: 5000,
     isActive: true,
+    medicalConditions: [],
     programRuns: [],
     newRunDate: "",
   };
@@ -205,6 +209,24 @@ export default function VendorSpaEditPage() {
   const [loaded, setLoaded] = useState(isNew);
   const [clinicCode, setClinicCode] = useState<string | null>(null);
 
+  const editSections = useMemo(
+    () => [
+      { id: "edit-basic", label: "Basic details" },
+      { id: "edit-amenities", label: "Amenities" },
+      { id: "edit-stay", label: "Stay & access" },
+      ...(!isNew ? [{ id: "edit-photos", label: "Photos" }] : []),
+      { id: "edit-payments", label: "Payments options" },
+      ...(!isNew
+        ? [
+            { id: "edit-hours", label: "Opening hours" },
+            { id: "edit-treatments", label: "Treatments & retreats" },
+          ]
+        : []),
+      { id: "edit-shop", label: "Shop (Shopify)" },
+    ],
+    [isNew],
+  );
+
   const set = (patch: Partial<SpaForm>) => setForm((f) => ({ ...f, ...patch }));
 
   async function refreshPublicSpaPage(slug: string | null) {
@@ -278,6 +300,8 @@ export default function VendorSpaEditPage() {
     setTreatments(
       data.treatments.map((t) => ({
         ...t,
+        description: t.description ?? "",
+        medicalConditions: t.medicalConditions ?? [],
         isActive: Boolean(t.isActive),
         durationDays: t.durationDays ?? null,
         retreatWeekdays: t.retreatWeekdays ?? [],
@@ -317,6 +341,16 @@ export default function VendorSpaEditPage() {
   }, [isNew]);
 
   async function save() {
+    if (!isNew) {
+      const invalidIndex = treatments.findIndex((t) => treatmentReadyToSave(t) !== null);
+      if (invalidIndex >= 0) {
+        const missing = treatmentReadyToSave(treatments[invalidIndex]);
+        toast(missing ?? "Finish the treatment before saving.", "error");
+        const el = document.querySelector(`[data-treatment-index="${invalidIndex}"]`);
+        if (el instanceof HTMLElement) easeScrollTo(el);
+        return;
+      }
+    }
     setBusy(true);
     try {
       const body = {
@@ -347,6 +381,15 @@ export default function VendorSpaEditPage() {
         method: "PUT",
         body: hours.filter((h) => !h.closed).map(({ weekday, openTime, closeTime }) => ({ weekday, openTime, closeTime })),
       });
+      for (let i = 0; i < treatments.length; i++) {
+        await persistTreatment(treatments[i], i);
+      }
+      for (const p of photos) {
+        await call(`/vendor/photos/${p.id}`, { method: "PATCH", body: { title: p.title.trim() } });
+      }
+      if (pendingPhotos.length > 0) {
+        await uploadPending({ quiet: true });
+      }
       toast("Saved.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
@@ -376,7 +419,7 @@ export default function VendorSpaEditPage() {
     });
   }
 
-  async function uploadPending() {
+  async function uploadPending(opts?: { quiet?: boolean }) {
     if (pendingPhotos.length === 0) return;
     setPhotoBusy(true);
     try {
@@ -401,12 +444,15 @@ export default function VendorSpaEditPage() {
       pendingPhotos.forEach((p) => URL.revokeObjectURL(p.preview));
       setPendingPhotos([]);
       setPhotos((list) => [...list, ...uploaded]);
-      toast(
-        uploaded.length === 1
-          ? "Photo uploaded. The first photo is used on search cards."
-          : `${uploaded.length} photos uploaded. The first photo is used on search cards.`
-      );
+      if (!opts?.quiet) {
+        toast(
+          uploaded.length === 1
+            ? "Photo uploaded. The first photo is used on search cards."
+            : `${uploaded.length} photos uploaded. The first photo is used on search cards.`
+        );
+      }
     } catch (err) {
+      if (opts?.quiet) throw err;
       toast(err instanceof Error ? err.message : "Could not upload photos", "error");
     } finally {
       setPhotoBusy(false);
@@ -462,31 +508,37 @@ export default function VendorSpaEditPage() {
     return () => window.clearTimeout(id);
   }, [treatments.length]);
 
-  async function saveTreatment(t: VendorTreatment, index: number) {
+  async function persistTreatment(t: VendorTreatment, index: number): Promise<void> {
     const missing = treatmentReadyToSave(t);
-    if (missing) {
-      toast(missing, "error");
-      return;
+    if (missing) throw new Error(missing);
+    const description = normalizeTreatmentDescription(t.description);
+    const body = {
+      categoryId: t.categoryId,
+      kind: t.kind,
+      name: t.name.trim(),
+      description,
+      durationMinutes: t.kind === "session" ? t.durationMinutes : null,
+      durationDays: t.kind === "session" ? null : t.durationDays,
+      retreatWeekdays: t.kind === "retreat" ? t.retreatWeekdays : [],
+      retreatCapacity: t.kind === "retreat" ? t.retreatCapacity : null,
+      priceMinor: t.priceMinor,
+      isActive: t.isActive,
+      medicalConditions: t.medicalConditions,
+    };
+    if (t.id) {
+      await call(`/vendor/treatments/${t.id}`, { method: "PUT", body });
+      setTreatments((list) => list.map((x, i) => (i === index ? { ...x, description } : x)));
+    } else {
+      const created = await call<{ id: number }>(`/vendor/spas/${id}/treatments`, { method: "POST", body });
+      setTreatments((list) =>
+        list.map((x, i) => (i === index ? { ...x, id: created.id, description } : x))
+      );
     }
+  }
+
+  async function saveTreatment(t: VendorTreatment, index: number) {
     try {
-      const body = {
-        categoryId: t.categoryId,
-        kind: t.kind,
-        name: t.name.trim(),
-        description: t.description,
-        durationMinutes: t.kind === "session" ? t.durationMinutes : null,
-        durationDays: t.kind === "session" ? null : t.durationDays,
-        retreatWeekdays: t.kind === "retreat" ? t.retreatWeekdays : [],
-        retreatCapacity: t.kind === "retreat" ? t.retreatCapacity : null,
-        priceMinor: t.priceMinor,
-        isActive: t.isActive,
-      };
-      if (t.id) {
-        await call(`/vendor/treatments/${t.id}`, { method: "PUT", body });
-      } else {
-        const created = await call<{ id: number }>(`/vendor/spas/${id}/treatments`, { method: "POST", body });
-        setTreatments((list) => list.map((x, i) => (i === index ? { ...x, id: created.id } : x)));
-      }
+      await persistTreatment(t, index);
       toast("Treatment saved.");
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
@@ -643,7 +695,10 @@ export default function VendorSpaEditPage() {
   if (!loaded) return <div className="mx-auto max-w-3xl px-4 py-10 text-foreground/60">Loading&hellip;</div>;
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-[68rem] px-4 py-8">
+      <div className="flex flex-col lg:flex-row lg:justify-center lg:gap-8">
+        <VendorEditNav sections={editSections} />
+        <div className="w-full min-w-0 max-w-3xl">
       <h1 className="text-2xl font-bold text-veda-900">{isNew ? "New spa listing" : `Edit: ${form.name}`}</h1>
       {clinicCode ? (
         <p className="mt-1 text-sm text-foreground/60">
@@ -653,8 +708,8 @@ export default function VendorSpaEditPage() {
         <p className="mt-1 text-sm text-foreground/60">A unique clinic ID (AA + 4 digits) is assigned when you create this listing.</p>
       ) : null}
 
-      <section className="mt-6 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
-        <h2 className="font-semibold text-veda-900">Listing details</h2>
+      <section id="edit-basic" className="mt-6 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Basic details</h2>
         <label className={label}>
           Name
           <input className={input} value={form.name} onChange={(e) => set({ name: e.target.value })} />
@@ -740,7 +795,7 @@ export default function VendorSpaEditPage() {
         </div>
       </section>
 
-      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+      <section id="edit-amenities" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Amenities</h2>
         <p className="text-sm text-foreground/60">
           Optional. Shown as chips on your public listing. Select every amenity guests can use.
@@ -772,18 +827,19 @@ export default function VendorSpaEditPage() {
         </div>
       </section>
 
-      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+      <section id="edit-stay" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Stay &amp; access</h2>
         <p className="text-sm text-foreground/60">Optional. Shown on your public listing when filled in.</p>
-        <label className={label}>
-          Languages spoken
+        <div className={label}>
+          <label htmlFor="spa-languages">Languages spoken</label>
           <TagInput
+            id="spa-languages"
             values={form.languages}
             onChange={(languages) => set({ languages })}
             suggestions={(meta.languages ?? []).map((l) => l.name)}
             placeholder="Type a language"
           />
-        </label>
+        </div>
         <label className={label}>
           Airport pickup
           <select
@@ -798,9 +854,10 @@ export default function VendorSpaEditPage() {
             <option value="not_available">{ON_REQUEST_LABELS.not_available}</option>
           </select>
         </label>
-        <label className={label}>
-          Accommodation type
+        <div className={label}>
+          <label htmlFor="spa-accommodation-types">Accommodation type</label>
           <TagInput
+            id="spa-accommodation-types"
             values={(meta.accommodationTypes ?? [])
               .filter((t) => form.accommodationTypeIds.includes(t.id))
               .map((t) => t.name)}
@@ -819,7 +876,7 @@ export default function VendorSpaEditPage() {
             placeholder="Choose one or more types"
             allowCreate={false}
           />
-        </label>
+        </div>
         <label className={label}>
           Other accommodation (this listing only)
           <input
@@ -830,15 +887,16 @@ export default function VendorSpaEditPage() {
             placeholder="e.g. Not in clinic, but available nearby"
           />
         </label>
-        <label className={label}>
-          Dietary options
+        <div className={label}>
+          <label htmlFor="spa-dietary-options">Dietary options</label>
           <TagInput
+            id="spa-dietary-options"
             values={form.dietaryOptions}
             onChange={(dietaryOptions) => set({ dietaryOptions })}
             suggestions={(meta.dietaryOptions ?? []).map((d) => d.name)}
             placeholder="Type a diet"
           />
-        </label>
+        </div>
         <label className={label}>
           Accessibility
           <textarea
@@ -866,7 +924,7 @@ export default function VendorSpaEditPage() {
       </section>
 
       {!isNew ? (
-        <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <section id="edit-photos" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
           <h2 className="font-semibold text-veda-900">Photos</h2>
           <p className="text-sm text-foreground/60">
             Select one or more JPEG, PNG, WebP, or GIF files (up to 8&nbsp;MB each). Give each
@@ -974,8 +1032,8 @@ export default function VendorSpaEditPage() {
         </p>
       )}
 
-      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
-        <h2 className="font-semibold text-veda-900">Payments</h2>
+      <section id="edit-payments" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Payments options</h2>
         <label className={label}>
           How do guests pay?
           <select
@@ -1018,24 +1076,8 @@ export default function VendorSpaEditPage() {
         ) : null}
       </section>
 
-      <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
-        <h2 className="font-semibold text-veda-900">Shop (Shopify)</h2>
-        <label className={label}>
-          Shopify collection handle for this spa&rsquo;s products
-          <input
-            className={input}
-            placeholder="e.g. ganga-veda"
-            value={form.shopifyCollectionHandle ?? ""}
-            onChange={(e) => set({ shopifyCollectionHandle: e.target.value })}
-          />
-        </label>
-        <p className="text-xs text-foreground/60">
-          Products from this collection appear on your public spa page. See SHOPIFY_SETUP.md.
-        </p>
-      </section>
-
       {!isNew ? (
-        <section className="mt-5 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <section id="edit-hours" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
           <h2 className="font-semibold text-veda-900">Opening hours</h2>
           {hours.map((h, i) => (
             <div key={h.weekday} className="flex flex-wrap items-center gap-2 text-sm">
@@ -1076,7 +1118,7 @@ export default function VendorSpaEditPage() {
       ) : null}
 
       {!isNew ? (
-        <section className="mt-5 space-y-4 rounded-2xl border border-veda-100 bg-white p-5">
+        <section id="edit-treatments" className="mt-5 scroll-mt-28 space-y-4 rounded-2xl border border-veda-100 bg-white p-5">
           <div className="flex items-center justify-between">
             <h2 className="font-semibold text-veda-900">Treatments &amp; retreats</h2>
             <button
@@ -1093,6 +1135,7 @@ export default function VendorSpaEditPage() {
           {treatments.map((t, i) => (
             <div
               key={t.id ?? t.clientKey ?? `new-${i}`}
+              data-treatment-index={i}
               ref={i === treatments.length - 1 ? lastTreatmentRef : undefined}
               className="space-y-2 rounded-xl border border-veda-100 p-3"
             >
@@ -1202,18 +1245,23 @@ export default function VendorSpaEditPage() {
                     aria-label="Amount"
                   />
                 </div>
-                <label className="flex h-[42px] items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={t.isActive}
-                    onChange={(e) =>
-                      setTreatments((list) =>
-                        list.map((x, j) => (j === i ? { ...x, isActive: e.target.checked } : x))
-                      )
-                    }
-                  />
-                  Active
-                </label>
+                <div>
+                  <span className="mb-1 hidden text-sm font-medium invisible select-none sm:block" aria-hidden>
+                    Amount
+                  </span>
+                  <label className="flex h-[42px] items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={t.isActive}
+                      onChange={(e) =>
+                        setTreatments((list) =>
+                          list.map((x, j) => (j === i ? { ...x, isActive: e.target.checked } : x))
+                        )
+                      }
+                    />
+                    Active
+                  </label>
+                </div>
               </div>
               {t.kind === "retreat" ? (
                 <div className="rounded-lg border border-veda-100 bg-veda-50/40 p-3">
@@ -1442,6 +1490,37 @@ export default function VendorSpaEditPage() {
                   )}
                 </div>
               ) : null}
+              <div className={label}>
+                <label htmlFor={`treatment-conditions-${t.id ?? t.clientKey ?? i}`}>
+                  Which health concerns and wellness goals does this treatment support?{" "}
+                  <span className="font-normal text-foreground/55">(optional, but recommended)</span>
+                </label>
+                <TagInput
+                  id={`treatment-conditions-${t.id ?? t.clientKey ?? i}`}
+                  values={t.medicalConditions}
+                  onChange={(medicalConditions) =>
+                    setTreatments((list) =>
+                      list.map((x, j) => (j === i ? { ...x, medicalConditions } : x))
+                    )
+                  }
+                  suggestions={(meta.medicalConditions ?? []).map((c) => c.name)}
+                  placeholder="Type a condition"
+                />
+              </div>
+              <label className={label}>
+                Treatment description{" "}
+                <span className="font-normal text-foreground/55">(optional)</span>
+                <ExpandingTextarea
+                  className={input}
+                  placeholder="Briefly describe the treatment and what to expect, without promotional claims or promises."
+                  value={t.description}
+                  onChange={(e) =>
+                    setTreatments((list) =>
+                      list.map((x, j) => (j === i ? { ...x, description: e.target.value } : x))
+                    )
+                  }
+                />
+              </label>
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
@@ -1463,6 +1542,22 @@ export default function VendorSpaEditPage() {
         </section>
       ) : null}
 
+      <section id="edit-shop" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Shop (Shopify)</h2>
+        <label className={label}>
+          Shopify collection handle for this spa&rsquo;s products
+          <input
+            className={input}
+            placeholder="e.g. ganga-veda"
+            value={form.shopifyCollectionHandle ?? ""}
+            onChange={(e) => set({ shopifyCollectionHandle: e.target.value })}
+          />
+        </label>
+        <p className="text-xs text-foreground/60">
+          Products from this collection appear on your public spa page. See SHOPIFY_SETUP.md.
+        </p>
+      </section>
+
       <div className="sticky bottom-4 mt-6 flex items-center gap-3 rounded-2xl border border-veda-200 bg-white p-4 shadow-lg">
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -1479,6 +1574,8 @@ export default function VendorSpaEditPage() {
         >
           {busy ? "Saving\u2026" : isNew ? "Create listing" : "Save changes"}
         </button>
+      </div>
+        </div>
       </div>
     </div>
   );

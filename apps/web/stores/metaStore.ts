@@ -15,6 +15,8 @@ const empty: StaticMeta = {
   languages: [],
   dietaryOptions: [],
   accommodationTypes: [],
+  medicalConditionCategories: [],
+  medicalConditions: [],
   turnstileSiteKey: null,
 };
 

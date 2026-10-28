@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { normalizeTreatmentDescription } from "@vedic/shared";
 import { execute, query, queryOne } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
@@ -15,6 +16,7 @@ import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { allocateClinicCode, parseBookingRefInput } from "../lib/bookingRefs.js";
 import { loadSpaOwner, notifyClinicSubmitted, notifySpaOwnerForPublish, notifyWelcomeVendor } from "../lib/notify.js";
 import { addIsoDays, loadProgramRuns, maskFromWeekdays, padTime, weekdaysFromMask } from "../lib/treatmentSchedule.js";
+import { loadTreatmentConditions, replaceTreatmentConditions } from "../lib/treatmentConditions.js";
 
 function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
   for (const name of names) {
@@ -418,6 +420,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       treatments.map((t) => [t.id, Number(t.durationDays ?? 1)])
     );
     const programRuns = await loadProgramRuns(treatmentIds, { durationByTreatment });
+    const medicalConditions = await loadTreatmentConditions(treatmentIds);
     const hours = await query(
       `SELECT weekday, TIME_FORMAT(open_time,'%H:%i') AS openTime, TIME_FORMAT(close_time,'%H:%i') AS closeTime
        FROM spa_open_hours WHERE spa_id = ? ORDER BY weekday`,
@@ -448,6 +451,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         retreatWeekdays: weekdaysFromMask(t.retreatWeekdays),
         retreatCapacity: t.retreatCapacity == null ? null : Number(t.retreatCapacity),
         programRuns: programRuns.get(t.id) ?? [],
+        medicalConditions: medicalConditions.get(t.id) ?? [],
       })),
       openHours: hours,
       photos: photos.map((p) => ({
@@ -578,13 +582,14 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     categoryId: z.number(),
     kind: z.enum(["session", "retreat", "program"]),
     name: z.string().min(3).max(160),
-    description: z.string().default(""),
+    description: z.string().default("").transform(normalizeTreatmentDescription),
     durationMinutes: z.number().int().min(15).max(480).nullable().default(null),
     durationDays: z.number().int().min(1).max(60).nullable().default(null),
     retreatWeekdays: z.array(z.number().int().min(0).max(6)).default([]),
     retreatCapacity: z.number().int().min(1).max(500).nullable().default(null),
     priceMinor: z.number().int().min(0),
     isActive: z.boolean().default(true),
+    medicalConditions: z.array(z.string()).default([]),
   });
 
   function treatmentColumns(body: z.infer<typeof treatmentSchema>) {
@@ -634,6 +639,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         body.priceMinor, body.isActive ? 1 : 0,
       ]
     );
+    const conditionError = await replaceTreatmentConditions(result.insertId, body.medicalConditions);
+    if (conditionError) return reply.code(400).send({ error: conditionError });
     return reply.code(201).send({ id: result.insertId });
   });
 
@@ -660,7 +667,15 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         body.priceMinor, body.isActive ? 1 : 0, treatmentId, vendor.id,
       ]
     );
-    if (result.affectedRows === 0) return reply.code(404).send({ error: "Treatment not found" });
+    if (result.affectedRows === 0) {
+      const owned = await queryOne<{ id: number }>(
+        "SELECT t.id FROM treatments t JOIN spas s ON s.id = t.spa_id WHERE t.id = ? AND s.vendor_id = ?",
+        [treatmentId, vendor.id]
+      );
+      if (!owned) return reply.code(404).send({ error: "Treatment not found" });
+    }
+    const conditionError = await replaceTreatmentConditions(treatmentId, body.medicalConditions);
+    if (conditionError) return reply.code(400).send({ error: conditionError });
     return { ok: true };
   });
 

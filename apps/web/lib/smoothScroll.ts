@@ -2,12 +2,16 @@
 export function easeScrollTo(el: HTMLElement, duration = 850): void {
   const listing = document.querySelector("[data-listing-nav]");
   const header = document.querySelector("header");
-  const headerOffset =
+  const editNav = document.querySelector("[data-edit-nav]");
+  let headerOffset =
     listing instanceof HTMLElement
       ? listing.getBoundingClientRect().height + 10
       : header instanceof HTMLElement && header.offsetParent !== null
         ? header.getBoundingClientRect().height + 8
         : 88;
+  if (editNav instanceof HTMLElement && editNav.offsetParent !== null) {
+    headerOffset += editNav.getBoundingClientRect().height + 6;
+  }
   const target = el.getBoundingClientRect().top + window.scrollY - headerOffset;
   const start = window.scrollY;
   const change = target - start;

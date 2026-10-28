@@ -10,7 +10,8 @@ DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
   spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
   users, booking_statuses, payment_modes, treatment_categories, amenities,
-  languages, dietary_options, accommodation_types,
+  languages, dietary_options, accommodation_types, treatment_medical_conditions,
+  medical_conditions, medical_condition_categories,
   cities, countries, currencies, roles;
 
 SET FOREIGN_KEY_CHECKS = 1;
@@ -71,6 +72,22 @@ CREATE TABLE treatment_categories (
   id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   slug VARCHAR(80) NOT NULL UNIQUE,
   name VARCHAR(80) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE medical_condition_categories (
+  id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  name VARCHAR(80) NOT NULL UNIQUE,
+  sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE medical_conditions (
+  id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  category_id SMALLINT UNSIGNED NOT NULL,
+  name VARCHAR(80) NOT NULL UNIQUE,
+  is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+  KEY idx_mc_category (category_id),
+  CONSTRAINT fk_mc_category FOREIGN KEY (category_id) REFERENCES medical_condition_categories(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE payment_modes (
@@ -308,6 +325,15 @@ CREATE TABLE treatments (
   KEY idx_treatment_spa (spa_id),
   CONSTRAINT fk_treatment_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
   CONSTRAINT fk_treatment_category FOREIGN KEY (category_id) REFERENCES treatment_categories(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE treatment_medical_conditions (
+  treatment_id BIGINT UNSIGNED NOT NULL,
+  medical_condition_id SMALLINT UNSIGNED NOT NULL,
+  sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  PRIMARY KEY (treatment_id, medical_condition_id),
+  CONSTRAINT fk_tmc_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id) ON DELETE CASCADE,
+  CONSTRAINT fk_tmc_condition FOREIGN KEY (medical_condition_id) REFERENCES medical_conditions(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE retreat_slots (

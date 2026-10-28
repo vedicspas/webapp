@@ -103,6 +103,155 @@ export const ACCOMMODATION_NAMES = [
   "Partner hotel nearby",
 ];
 
+export const OTHER_MEDICAL_CONDITION_CATEGORY = "Other";
+
+/** Grouped for later UI; autocomplete uses the condition names only. */
+export const MEDICAL_CONDITION_GROUPS: { category: string; conditions: string[] }[] = [
+  {
+    category: "Weight & metabolic health",
+    conditions: [
+      "Weight loss support",
+      "Healthy weight gain",
+      "Obesity management support",
+      "Prediabetes support",
+      "Diabetes support",
+      "High cholesterol support",
+      "Thyroid-condition support",
+    ],
+  },
+  {
+    category: "Stress, sleep & emotional well-being",
+    conditions: [
+      "Stress management",
+      "Anxiety support",
+      "Depression support",
+      "Insomnia & sleep support",
+      "Burnout support",
+    ],
+  },
+  {
+    category: "Energy & general wellness",
+    conditions: [
+      "Fatigue & low-energy support",
+      "General well-being & vitality",
+      "Healthy ageing",
+      "Preventive wellness",
+      "Smoking cessation support",
+    ],
+  },
+  {
+    category: "Digestive health",
+    conditions: [
+      "General digestive health",
+      "Acidity & acid reflux",
+      "Bloating & gas",
+      "Constipation",
+      "Irritable bowel syndrome (IBS) support",
+    ],
+  },
+  {
+    category: "Heart, liver & kidney health",
+    conditions: [
+      "Heart-health support",
+      "High blood pressure support",
+      "Liver-condition support",
+      "Kidney-condition support",
+    ],
+  },
+  {
+    category: "Women's health",
+    conditions: [
+      "General women's wellness",
+      "Menstrual-health support",
+      "Period-pain support",
+      "Premenstrual syndrome (PMS) support",
+      "PCOS support",
+      "Perimenopause & menopause support",
+      "Pregnancy wellness support",
+      "Postnatal recovery support",
+    ],
+  },
+  {
+    category: "Men's health",
+    conditions: [
+      "General men's wellness",
+      "Erectile dysfunction support",
+    ],
+  },
+  {
+    category: "Reproductive & sexual health",
+    conditions: [
+      "Fertility & preconception support",
+      "Sexual well-being support",
+    ],
+  },
+  {
+    category: "Joint, muscle & spine health",
+    conditions: [
+      "Arthritis support",
+      "Joint pain & stiffness",
+      "Knee pain",
+      "Shoulder pain",
+      "Back pain",
+      "Neck pain",
+      "Muscle pain & tension",
+      "Sciatica support",
+      "Spondylosis support",
+      "Frozen shoulder support",
+      "Osteoporosis support",
+      "Mobility & flexibility",
+    ],
+  },
+  {
+    category: "Headache, respiratory & allergy support",
+    conditions: [
+      "Migraine support",
+      "Headache support",
+      "Sinusitis support",
+      "Allergy support",
+      "Nasal allergy support",
+      "Asthma support",
+    ],
+  },
+  {
+    category: "Skin, hair & scalp health",
+    conditions: [
+      "General skin-health support",
+      "Psoriasis support",
+      "Eczema support",
+      "Acne support",
+      "Dry or itchy skin",
+      "Hair-loss support",
+      "Dandruff & scalp care",
+    ],
+  },
+  {
+    category: "Recovery & rehabilitation",
+    conditions: [
+      "Sports-injury recovery support",
+      "Post-surgery recovery support",
+      "Post-illness recovery support",
+      "Stroke rehabilitation support",
+      "Paralysis support",
+    ],
+  },
+  {
+    category: "Neurological & chronic-condition support",
+    conditions: [
+      "Parkinson's disease support",
+      "Peripheral neuropathy support",
+      "Autoimmune-condition support",
+      "Cancer supportive care",
+      "Chronic-pain support",
+      "Chronic-illness well-being",
+    ],
+  },
+  {
+    category: OTHER_MEDICAL_CONDITION_CATEGORY,
+    conditions: [],
+  },
+];
+
 /** ISO 3166-1 country list, seeded in-repo (no external download). */
 export const COUNTRIES: Array<[iso2: string, name: string]> = [
   ["AF", "Afghanistan"],

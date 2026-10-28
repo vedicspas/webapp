@@ -12,12 +12,13 @@ import {
 import { publicPhotoUrl } from "../lib/uploads.js";
 import { loadSpaStay } from "../lib/spaStay.js";
 import { loadProgramRuns, weekdaysFromMask } from "../lib/treatmentSchedule.js";
+import { loadTreatmentConditions } from "../lib/treatmentConditions.js";
 
 const PAGE_SIZE = 12;
 
 async function mapPublicTreatments(
   rows: Array<
-    Omit<Treatment, "categoryName" | "retreatWeekdays"> & {
+    Omit<Treatment, "categoryName" | "retreatWeekdays" | "medicalConditions"> & {
       retreatWeekdays: number | null;
     }
   >
@@ -27,6 +28,7 @@ async function mapPublicTreatments(
     programIds.length === 0
       ? new Map()
       : await loadProgramRuns(programIds, { upcomingOnly: true });
+  const medicalConditions = await loadTreatmentConditions(rows.map((t) => t.id));
   return rows
     .filter((t) => t.kind !== "program" || (upcoming.get(t.id)?.length ?? 0) > 0)
     .map((t) => ({
@@ -36,6 +38,7 @@ async function mapPublicTreatments(
       retreatCapacity: t.retreatCapacity == null ? null : Number(t.retreatCapacity),
       isActive: Boolean(t.isActive),
       categoryName: staticCache.treatmentCategoryName(t.categoryId),
+      medicalConditions: medicalConditions.get(t.id) ?? [],
     }));
 }
 
@@ -108,8 +111,14 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
            SELECT 1 FROM treatments tr
            WHERE tr.spa_id = s.id AND tr.is_active = 1 AND tr.name LIKE ?
          )`,
+        `EXISTS (
+           SELECT 1 FROM treatments tr
+           JOIN treatment_medical_conditions tmc ON tmc.treatment_id = tr.id
+           JOIN medical_conditions mc ON mc.id = tmc.medical_condition_id
+           WHERE tr.spa_id = s.id AND tr.is_active = 1 AND mc.name LIKE ?
+         )`,
       ];
-      args.push(qLike, qLike, qLike, qLike, qLike);
+      args.push(qLike, qLike, qLike, qLike, qLike, qLike);
 
       if (matchingCityIds.length > 0) {
         clauses.push(`s.city_id IN (${matchingCityIds.map(() => "?").join(",")})`);

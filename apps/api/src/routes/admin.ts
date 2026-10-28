@@ -10,6 +10,7 @@ import { uniqueSlug } from "../lib/spaSlug.js";
 import { allocateClinicCode } from "../lib/bookingRefs.js";
 import { adminClaimRoutes } from "./claims.js";
 import { adminInquiryRoutes } from "./inquiries.js";
+import { OTHER_MEDICAL_CONDITION_CATEGORY } from "../db/lookups.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -688,6 +689,192 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: `This type is used by ${n} listing${n === 1 ? "" : "s"}. Remove it there first.` });
     }
     await execute("DELETE FROM accommodation_types WHERE id = ?", [id]);
+    await staticCache.reload();
+    return { ok: true };
+  });
+
+  function tidyLookupName(raw: string): string {
+    return raw.trim().replace(/\s+/g, " ").slice(0, 80);
+  }
+
+  app.get("/admin/medical-conditions", async () => {
+    const categories = await query<{
+      id: number;
+      name: string;
+      sortOrder: number;
+      isDeleted: number;
+    }>(
+      `SELECT id, name, sort_order AS sortOrder, is_deleted AS isDeleted
+       FROM medical_condition_categories
+       ORDER BY is_deleted, sort_order, name`
+    );
+    const conditions = await query<{
+      id: number;
+      categoryId: number;
+      name: string;
+      isDeleted: number;
+      usageCount: number;
+    }>(
+      `SELECT mc.id, mc.category_id AS categoryId, mc.name, mc.is_deleted AS isDeleted,
+              COUNT(tmc.treatment_id) AS usageCount
+       FROM medical_conditions mc
+       LEFT JOIN treatment_medical_conditions tmc ON tmc.medical_condition_id = mc.id
+       GROUP BY mc.id, mc.category_id, mc.name, mc.is_deleted
+       ORDER BY mc.is_deleted, mc.name`
+    );
+    const byCategory = new Map<number, typeof conditions>();
+    for (const row of conditions) {
+      const list = byCategory.get(row.categoryId) ?? [];
+      list.push({ ...row, usageCount: Number(row.usageCount), isDeleted: Number(row.isDeleted) });
+      byCategory.set(row.categoryId, list);
+    }
+    return categories.map((cat) => {
+      const items = byCategory.get(cat.id) ?? [];
+      return {
+        id: cat.id,
+        name: cat.name,
+        sortOrder: cat.sortOrder,
+        isDeleted: Boolean(Number(cat.isDeleted)),
+        isOther: cat.name === OTHER_MEDICAL_CONDITION_CATEGORY,
+        usageCount: items.reduce((sum, item) => sum + item.usageCount, 0),
+        conditions: items.map((item) => ({
+          id: item.id,
+          name: item.name,
+          isDeleted: Boolean(item.isDeleted),
+          usageCount: item.usageCount,
+        })),
+      };
+    });
+  });
+
+  app.post("/admin/medical-condition-categories", async (request, reply) => {
+    const body = z.object({ name: z.string().min(2).max(80) }).parse(request.body);
+    const name = tidyLookupName(body.name);
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a category name." });
+    const maxSort = await queryOne<{ n: number }>(
+      "SELECT COALESCE(MAX(sort_order), 0) AS n FROM medical_condition_categories"
+    );
+    try {
+      const result = await execute(
+        "INSERT INTO medical_condition_categories (name, sort_order, is_deleted) VALUES (?, ?, 0)",
+        [name, Number(maxSort?.n ?? 0) + 1]
+      );
+      await staticCache.reload();
+      return reply.code(201).send({ id: result.insertId, name });
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That category already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/admin/medical-condition-categories/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const body = z.object({ name: z.string().min(2).max(80) }).parse(request.body);
+    const name = tidyLookupName(body.name);
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a category name." });
+    const existing = await queryOne<{ id: number; name: string }>(
+      "SELECT id, name FROM medical_condition_categories WHERE id = ?",
+      [id]
+    );
+    if (!existing) return reply.code(404).send({ error: "Category not found" });
+    if (existing.name === OTHER_MEDICAL_CONDITION_CATEGORY) {
+      return reply.code(400).send({ error: "The Other category cannot be renamed." });
+    }
+    try {
+      await execute("UPDATE medical_condition_categories SET name = ? WHERE id = ?", [name, id]);
+      await staticCache.reload();
+      return { id, name };
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That category already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/admin/medical-condition-categories/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const existing = await queryOne<{ id: number; name: string }>(
+      "SELECT id, name FROM medical_condition_categories WHERE id = ?",
+      [id]
+    );
+    if (!existing) return reply.code(404).send({ error: "Category not found" });
+    if (existing.name === OTHER_MEDICAL_CONDITION_CATEGORY) {
+      return reply.code(400).send({ error: "The Other category cannot be retired." });
+    }
+    await execute("UPDATE medical_condition_categories SET is_deleted = 1 WHERE id = ?", [id]);
+    await staticCache.reload();
+    return { ok: true };
+  });
+
+  app.post("/admin/medical-condition-categories/:id/restore", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const result = await execute("UPDATE medical_condition_categories SET is_deleted = 0 WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Category not found" });
+    await staticCache.reload();
+    return { ok: true };
+  });
+
+  app.post("/admin/medical-conditions", async (request, reply) => {
+    const body = z.object({ categoryId: z.number().int().positive(), name: z.string().min(2).max(80) }).parse(
+      request.body
+    );
+    const name = tidyLookupName(body.name);
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a condition name." });
+    const category = await queryOne<{ id: number }>(
+      "SELECT id FROM medical_condition_categories WHERE id = ?",
+      [body.categoryId]
+    );
+    if (!category) return reply.code(400).send({ error: "Unknown category" });
+    try {
+      const result = await execute(
+        "INSERT INTO medical_conditions (category_id, name, is_deleted) VALUES (?, ?, 0)",
+        [body.categoryId, name]
+      );
+      await staticCache.reload();
+      return reply.code(201).send({ id: result.insertId, name, categoryId: body.categoryId });
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That condition already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.patch("/admin/medical-conditions/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const body = z.object({ name: z.string().min(2).max(80) }).parse(request.body);
+    const name = tidyLookupName(body.name);
+    if (name.length < 2) return reply.code(400).send({ error: "Enter a condition name." });
+    const existing = await queryOne<{ id: number }>("SELECT id FROM medical_conditions WHERE id = ?", [id]);
+    if (!existing) return reply.code(404).send({ error: "Condition not found" });
+    try {
+      await execute("UPDATE medical_conditions SET name = ? WHERE id = ?", [name, id]);
+      await staticCache.reload();
+      return { id, name };
+    } catch (err) {
+      if ((err as { code?: string }).code === "ER_DUP_ENTRY") {
+        return reply.code(409).send({ error: "That condition already exists." });
+      }
+      throw err;
+    }
+  });
+
+  app.delete("/admin/medical-conditions/:id", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const existing = await queryOne<{ id: number }>("SELECT id FROM medical_conditions WHERE id = ?", [id]);
+    if (!existing) return reply.code(404).send({ error: "Condition not found" });
+    await execute("UPDATE medical_conditions SET is_deleted = 1 WHERE id = ?", [id]);
+    await staticCache.reload();
+    return { ok: true };
+  });
+
+  app.post("/admin/medical-conditions/:id/restore", async (request, reply) => {
+    const id = Number((request.params as { id: string }).id);
+    const result = await execute("UPDATE medical_conditions SET is_deleted = 0 WHERE id = ?", [id]);
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Condition not found" });
     await staticCache.reload();
     return { ok: true };
   });

@@ -119,6 +119,10 @@ export default function AdminAccommodationTypesPage() {
         <Link href="/admin/settings" className="text-veda-700 underline hover:text-veda-900">
           Site settings
         </Link>
+        {" · "}
+        <Link href="/admin/medical-conditions" className="text-veda-700 underline hover:text-veda-900">
+          Medical conditions
+        </Link>
       </p>
       <h1 className="mt-3 text-2xl font-bold text-veda-900">Accommodation types</h1>
       <p className="mt-2 text-sm text-foreground/60">

@@ -12,6 +12,7 @@ import { QASection } from "@/components/spa/QASection";
 import { ShopSection } from "@/components/spa/ShopSection";
 import { WEEKDAYS, formatSpaAddress, formatSpaLocality, money, treatmentDurationLabel } from "@/lib/format";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
+import { TreatmentDescription } from "@/components/spa/TreatmentDescription";
 import { SpaLocationLink, SpaLocationPreview, SpaLocationProvider } from "@/components/spa/SpaLocation";
 import { ShareListing } from "@/components/spa/ShareListing";
 import { ClaimClinicControl, ClaimUiProvider } from "@/components/spa/ClaimClinicLightbox";
@@ -153,6 +154,13 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
                       return duration ? ` · ${duration}` : null;
                     })()}
                   </p>
+                  {(t.medicalConditions ?? []).length > 0 ? (
+                    <p className="mt-3 text-sm text-foreground/70">
+                      <span className="font-medium text-foreground/80">Useful for:</span>{" "}
+                      {t.medicalConditions.join(", ")}
+                    </p>
+                  ) : null}
+                  <TreatmentDescription text={t.description} />
                 </li>
               ))}
               {spa.treatments.length === 0 ? (

@@ -3,7 +3,13 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import mysql from "mysql2/promise";
 import { config } from "../config.js";
-import { ACCOMMODATION_NAMES, DIETARY_NAMES, LANGUAGE_NAMES, countriesInsertSql } from "./lookups.js";
+import {
+  ACCOMMODATION_NAMES,
+  DIETARY_NAMES,
+  LANGUAGE_NAMES,
+  MEDICAL_CONDITION_GROUPS,
+  countriesInsertSql,
+} from "./lookups.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -93,6 +99,66 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   await conn.query(insertIgnore("languages", LANGUAGE_NAMES));
   await conn.query(insertIgnore("dietary_options", DIETARY_NAMES));
   await conn.query(insertIgnore("accommodation_types", ACCOMMODATION_NAMES));
+
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS medical_condition_categories (
+      id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      name VARCHAR(80) NOT NULL UNIQUE,
+      sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      is_deleted TINYINT(1) NOT NULL DEFAULT 0
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS medical_conditions (
+      id SMALLINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      category_id SMALLINT UNSIGNED NOT NULL,
+      name VARCHAR(80) NOT NULL UNIQUE,
+      is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+      KEY idx_mc_category (category_id),
+      CONSTRAINT fk_mc_category FOREIGN KEY (category_id) REFERENCES medical_condition_categories(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS treatment_medical_conditions (
+      treatment_id BIGINT UNSIGNED NOT NULL,
+      medical_condition_id SMALLINT UNSIGNED NOT NULL,
+      sort_order TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      PRIMARY KEY (treatment_id, medical_condition_id),
+      CONSTRAINT fk_tmc_treatment FOREIGN KEY (treatment_id) REFERENCES treatments(id) ON DELETE CASCADE,
+      CONSTRAINT fk_tmc_condition FOREIGN KEY (medical_condition_id) REFERENCES medical_conditions(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(conn, "ALTER TABLE medical_condition_categories ADD COLUMN IF NOT EXISTS is_deleted TINYINT(1) NOT NULL DEFAULT 0");
+  await run(conn, "ALTER TABLE medical_conditions ADD COLUMN IF NOT EXISTS is_deleted TINYINT(1) NOT NULL DEFAULT 0");
+
+  const [legacyConditionGroup] = await conn.query(
+    "SELECT id FROM medical_condition_categories WHERE name = ? LIMIT 1",
+    ["Wellness and lifestyle"]
+  );
+  if (Array.isArray(legacyConditionGroup) && legacyConditionGroup.length > 0) {
+    await conn.query("DELETE FROM treatment_medical_conditions");
+    await conn.query("DELETE FROM medical_conditions");
+    await conn.query("DELETE FROM medical_condition_categories");
+  }
+
+  for (const [i, group] of MEDICAL_CONDITION_GROUPS.entries()) {
+    await conn.query("INSERT IGNORE INTO medical_condition_categories (name, sort_order) VALUES (?, ?)", [
+      group.category,
+      i + 1,
+    ]);
+  }
+  for (const group of MEDICAL_CONDITION_GROUPS) {
+    for (const name of group.conditions) {
+      await conn.query(
+        `INSERT IGNORE INTO medical_conditions (category_id, name)
+         SELECT id, ? FROM medical_condition_categories WHERE name = ?`,
+        [name, group.category]
+      );
+    }
+  }
 
   const [legacyAccCol] = await conn.query("SHOW COLUMNS FROM spas LIKE 'accommodation_type_id'");
   if (Array.isArray(legacyAccCol) && legacyAccCol.length > 0) {

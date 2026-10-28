@@ -75,6 +75,8 @@ export const EMPTY_META: StaticMeta = {
   languages: [],
   dietaryOptions: [],
   accommodationTypes: [],
+  medicalConditionCategories: [],
+  medicalConditions: [],
   turnstileSiteKey: null,
 };
 

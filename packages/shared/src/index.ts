@@ -38,6 +38,18 @@ export interface TreatmentCategory {
   name: string;
 }
 
+export interface MedicalConditionCategory {
+  id: number;
+  name: string;
+  sortOrder: number;
+}
+
+export interface MedicalCondition {
+  id: number;
+  categoryId: number;
+  name: string;
+}
+
 export type PaymentModeCode = "full_prepay" | "deposit" | "booking_fee" | "pay_at_spa";
 
 export interface PaymentMode {
@@ -88,6 +100,8 @@ export interface StaticMeta {
   languages: NamedLookup[];
   dietaryOptions: NamedLookup[];
   accommodationTypes: NamedLookup[];
+  medicalConditionCategories: MedicalConditionCategory[];
+  medicalConditions: MedicalCondition[];
   turnstileSiteKey?: string | null;
 }
 
@@ -128,6 +142,26 @@ export interface Treatment {
   retreatCapacity: number | null; // people starting that weekday
   priceMinor: number;
   isActive: boolean;
+  medicalConditions: string[];
+}
+
+/** Trim edges and collapse consecutive blank lines to a single paragraph break. */
+export function normalizeTreatmentDescription(text: string): string {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function treatmentDescriptionParagraphs(text: string): string[] {
+  const normalized = normalizeTreatmentDescription(text);
+  if (!normalized) return [];
+  return normalized
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 export interface SpaPhoto {
