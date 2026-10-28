@@ -94,7 +94,8 @@ CREATE TABLE payment_modes (
   id TINYINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
   code VARCHAR(24) NOT NULL UNIQUE,
   name VARCHAR(64) NOT NULL,
-  description VARCHAR(255) NOT NULL
+  description VARCHAR(255) NOT NULL,
+  requires_online_payment TINYINT(1) NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE booking_statuses (

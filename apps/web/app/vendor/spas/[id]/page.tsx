@@ -12,6 +12,7 @@ import { TagInput } from "@/components/TagInput";
 import { toast } from "@/stores/toastStore";
 import { easeScrollTo } from "@/lib/smoothScroll";
 import { DateField } from "@/components/DateField";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { VendorEditNav } from "@/components/vendor/VendorEditNav";
 import type { OnRequestFlag, StaticMeta } from "@vedic/shared";
 
@@ -208,6 +209,9 @@ export default function VendorSpaEditPage() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(isNew);
   const [clinicCode, setClinicCode] = useState<string | null>(null);
+  const [stripeOnboarded, setStripeOnboarded] = useState(false);
+  const [stripeConfigured, setStripeConfigured] = useState(false);
+  const [payAlert, setPayAlert] = useState<"platform" | "vendor" | null>(null);
 
   const editSections = useMemo(
     () => [
@@ -340,6 +344,41 @@ export default function VendorSpaEditPage() {
     void refreshStayMeta();
   }, [isNew]);
 
+  useEffect(() => {
+    if (!token) return;
+    call<{ stripeOnboarded: boolean; stripeConfigured: boolean }>("/vendor/me")
+      .then((me) => {
+        setStripeOnboarded(Boolean(me.stripeOnboarded));
+        setStripeConfigured(Boolean(me.stripeConfigured));
+      })
+      .catch(() => {});
+  }, [token, call]);
+
+  function fallbackPaymentMode(): SpaForm["paymentModeCode"] {
+    const mode = meta.paymentModes.find((m) => !m.requiresOnlinePayment);
+    return (mode?.code as SpaForm["paymentModeCode"] | undefined) ?? "pay_at_spa";
+  }
+
+  function canCollectOnline(): boolean {
+    return stripeConfigured && stripeOnboarded;
+  }
+
+  function onPaymentModeChange(code: SpaForm["paymentModeCode"]) {
+    set({ paymentModeCode: code });
+    const mode = meta.paymentModes.find((m) => m.code === code);
+    if (!mode?.requiresOnlinePayment) return;
+    if (!stripeConfigured) {
+      setPayAlert("platform");
+      return;
+    }
+    if (!stripeOnboarded) setPayAlert("vendor");
+  }
+
+  function dismissPayAlert() {
+    set({ paymentModeCode: fallbackPaymentMode() });
+    setPayAlert(null);
+  }
+
   async function save() {
     if (!isNew) {
       const invalidIndex = treatments.findIndex((t) => treatmentReadyToSave(t) !== null);
@@ -353,10 +392,17 @@ export default function VendorSpaEditPage() {
     }
     setBusy(true);
     try {
+      const selected = meta.paymentModes.find((m) => m.code === form.paymentModeCode);
+      const paymentModeCode =
+        selected?.requiresOnlinePayment && !canCollectOnline()
+          ? fallbackPaymentMode()
+          : form.paymentModeCode;
+      const coerced = paymentModeCode !== form.paymentModeCode;
       const body = {
         ...form,
-        depositBps: form.paymentModeCode === "deposit" ? form.depositBps : null,
-        bookingFeeMinor: form.paymentModeCode === "booking_fee" ? form.bookingFeeMinor : null,
+        paymentModeCode,
+        depositBps: paymentModeCode === "deposit" ? form.depositBps : null,
+        bookingFeeMinor: paymentModeCode === "booking_fee" ? form.bookingFeeMinor : null,
         shopifyCollectionHandle: form.shopifyCollectionHandle || null,
         phone: form.phone || null,
         email: form.email || null,
@@ -372,7 +418,11 @@ export default function VendorSpaEditPage() {
       };
       if (isNew) {
         const created = await call<{ id: number }>("/vendor/spas", { method: "POST", body });
-        toast("Listing created.");
+        toast(
+          coerced
+            ? "Listing created as Free reservation until Stripe is connected."
+            : "Listing created."
+        );
         router.push(`/vendor/spas/${created.id}`);
         return;
       }
@@ -390,7 +440,12 @@ export default function VendorSpaEditPage() {
       if (pendingPhotos.length > 0) {
         await uploadPending({ quiet: true });
       }
-      toast("Saved.");
+      if (coerced) {
+        set({ paymentModeCode });
+        toast("Saved as Free reservation until Stripe is connected.");
+      } else {
+        toast("Saved.");
+      }
       await refreshPublicSpaPage(listingSlug);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Save failed", "error");
@@ -1039,7 +1094,7 @@ export default function VendorSpaEditPage() {
           <select
             className={input}
             value={form.paymentModeCode}
-            onChange={(e) => set({ paymentModeCode: e.target.value as SpaForm["paymentModeCode"] })}
+            onChange={(e) => onPaymentModeChange(e.target.value as SpaForm["paymentModeCode"])}
           >
             {meta.paymentModes.map((m) => (
               <option key={m.id} value={m.code}>
@@ -1575,6 +1630,32 @@ export default function VendorSpaEditPage() {
           {busy ? "Saving\u2026" : isNew ? "Create listing" : "Save changes"}
         </button>
       </div>
+      <ConfirmDialog
+        open={payAlert !== null}
+        title="Online payments"
+        message={
+          payAlert === "platform" ? (
+            "Online payments are currently disabled. We are finalizing our payment system—you will soon be able to connect your Stripe account here to start accepting customer payments."
+          ) : (
+            <>
+              You need to connect your Stripe account to start accepting online payments.{" "}
+              <a
+                href="/vendor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-veda-800 underline"
+              >
+                Click here
+              </a>{" "}
+              to go to your dashboard and connect your account.
+            </>
+          )
+        }
+        confirmLabel="OK"
+        cancelLabel={null}
+        onConfirm={dismissPayAlert}
+        onCancel={dismissPayAlert}
+      />
         </div>
       </div>
     </div>

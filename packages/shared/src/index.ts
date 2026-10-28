@@ -57,6 +57,7 @@ export interface PaymentMode {
   code: PaymentModeCode;
   name: string;
   description: string;
+  requiresOnlinePayment: boolean;
 }
 
 export type BookingStatusCode =

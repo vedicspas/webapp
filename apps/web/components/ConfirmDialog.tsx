@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useId } from "react";
+import { useEffect, useId, type ReactNode } from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
   title?: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
-  cancelLabel?: string;
+  cancelLabel?: string | null;
   busy?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
@@ -64,9 +64,9 @@ export function ConfirmDialog({
           <p id={titleId} className="text-lg font-semibold text-veda-900">
             {title}
           </p>
-          <p id={messageId} className="mt-3 text-sm leading-relaxed text-foreground/75">
+          <div id={messageId} className="mt-3 text-sm leading-relaxed text-foreground/75">
             {message}
-          </p>
+          </div>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <button
               type="button"
@@ -76,14 +76,16 @@ export function ConfirmDialog({
             >
               {busy ? "Updating…" : confirmLabel}
             </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={onCancel}
-              className="rounded-full bg-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-50"
-            >
-              {cancelLabel}
-            </button>
+            {cancelLabel ? (
+              <button
+                type="button"
+                disabled={busy}
+                onClick={onCancel}
+                className="rounded-full bg-gray-200 px-5 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-300 disabled:opacity-50"
+              >
+                {cancelLabel}
+              </button>
+            ) : null}
           </div>
         </div>
       </div>

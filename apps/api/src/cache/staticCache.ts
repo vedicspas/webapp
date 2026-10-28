@@ -71,7 +71,11 @@ class StaticCache {
       query<TreatmentCategory>(
         "SELECT id, slug, name FROM treatment_categories ORDER BY name"
       ),
-      query<PaymentMode>("SELECT id, code, name, description FROM payment_modes"),
+      query<PaymentMode & { requires_online_payment?: number }>(
+        `SELECT id, code, name, description,
+           requires_online_payment AS requiresOnlinePayment
+         FROM payment_modes`
+      ),
       query<BookingStatus>("SELECT id, code, name FROM booking_statuses"),
       query<Currency>("SELECT id, code, symbol FROM currencies"),
       query<Role>("SELECT id, code FROM roles"),
@@ -101,7 +105,10 @@ class StaticCache {
       if (b.slug === "other") return -1;
       return a.name.localeCompare(b.name);
     });
-    this.paymentModes = modes;
+    this.paymentModes = modes.map((m) => ({
+      ...m,
+      requiresOnlinePayment: Boolean(m.requiresOnlinePayment),
+    }));
     this.bookingStatuses = statuses;
     this.currencies = currencies;
     this.roles = roles;

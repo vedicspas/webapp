@@ -39,6 +39,21 @@ interface VendorRow {
   stripe_onboarded: number;
 }
 
+function vendorCanCollectOnline(vendor: VendorRow): boolean {
+  return Boolean(stripe && vendor.stripe_onboarded);
+}
+
+function resolvedPaymentMode(vendor: VendorRow, requestedCode: string) {
+  const requested = staticCache.paymentModeByCode(requestedCode);
+  const fallback =
+    staticCache.paymentModes.find((m) => !m.requiresOnlinePayment) ??
+    staticCache.paymentModeByCode("pay_at_spa");
+  if (!fallback) throw new Error("Missing pay_at_spa payment mode");
+  if (!requested) return fallback;
+  if (requested.requiresOnlinePayment && !vendorCanCollectOnline(vendor)) return fallback;
+  return requested;
+}
+
 async function vendorFor(request: FastifyRequest): Promise<VendorRow | null> {
   return queryOne<VendorRow>(
     "SELECT id, user_id, business_name, status, stripe_account_id, stripe_onboarded FROM vendors WHERE user_id = ?",
@@ -174,6 +189,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       status: vendor.status,
       stripeOnboarded: Boolean(vendor.stripe_onboarded),
       hasStripeAccount: Boolean(vendor.stripe_account_id),
+      stripeConfigured: Boolean(stripe),
       spas: spas.map((s) => ({
         id: s.id,
         slug: s.slug,
@@ -292,11 +308,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         .send({ error: "Your vendor account is awaiting approval; you can prepare the listing but not publish it yet." });
     }
 
-    const mode = staticCache.paymentModeByCode(body.paymentModeCode)!;
+    const mode = resolvedPaymentMode(vendor, body.paymentModeCode);
     const currency = staticCache.currencies.find((c) => c.code === body.currencyCode);
     if (!currency) return reply.code(400).send({ error: "Unknown currency" });
     if (!staticCache.country(body.countryId)) return reply.code(400).send({ error: "Unknown country" });
     const cityId = resolveCityId(body.countryId, body.cityName);
+    const depositBps = mode.code === "deposit" ? body.depositBps : null;
+    const bookingFeeMinor = mode.code === "booking_fee" ? body.bookingFeeMinor : null;
 
     let slug = slugify(body.name);
     if (await queryOne("SELECT id FROM spas WHERE slug = ?", [slug])) {
@@ -315,7 +333,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         vendor.id, clinicCode, slug, body.name, body.shortDescription, body.description, body.addressLine,
         body.postalCode, body.countryId, body.state.trim(), body.cityName.trim(), cityId,
         body.lat, body.lng, body.phone, body.email, body.website,
-        body.shopifyCollectionHandle, mode.id, body.depositBps, body.bookingFeeMinor,
+        body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0,
       ]
     );
@@ -350,11 +368,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         .code(403)
         .send({ error: "Your vendor account is awaiting approval; you can prepare the listing but not publish it yet." });
     }
-    const mode = staticCache.paymentModeByCode(body.paymentModeCode)!;
+    const mode = resolvedPaymentMode(vendor, body.paymentModeCode);
     const currency = staticCache.currencies.find((c) => c.code === body.currencyCode);
     if (!currency) return reply.code(400).send({ error: "Unknown currency" });
     if (!staticCache.country(body.countryId)) return reply.code(400).send({ error: "Unknown country" });
     const cityId = resolveCityId(body.countryId, body.cityName);
+    const depositBps = mode.code === "deposit" ? body.depositBps : null;
+    const bookingFeeMinor = mode.code === "booking_fee" ? body.bookingFeeMinor : null;
     const before = await queryOne<{ is_published: number }>("SELECT is_published FROM spas WHERE id = ?", [spaId]);
 
     await execute(
@@ -366,7 +386,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         body.name, body.shortDescription, body.description, body.addressLine, body.postalCode,
         body.countryId, body.state.trim(), body.cityName.trim(), cityId,
         body.lat, body.lng, body.phone, body.email, body.website,
-        body.shopifyCollectionHandle, mode.id, body.depositBps, body.bookingFeeMinor,
+        body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0, spaId,
       ]
     );

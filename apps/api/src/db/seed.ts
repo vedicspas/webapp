@@ -73,11 +73,11 @@ async function main() {
   );
 
   await execute(
-    `INSERT IGNORE INTO payment_modes (code, name, description) VALUES
-     ('full_prepay','Pay in full online','The full treatment price is charged online at booking time.'),
-     ('deposit','Deposit online','A percentage deposit is charged online; the balance is paid at the spa.'),
-     ('booking_fee','Booking fee','A small fixed booking fee is charged online; the treatment is paid at the spa.'),
-     ('pay_at_spa','Pay at the spa','Free reservation. Everything is paid on arrival.')`,
+    `INSERT IGNORE INTO payment_modes (code, name, description, requires_online_payment) VALUES
+     ('full_prepay','Pay in full online','The full treatment price is charged online at booking time.', 1),
+     ('deposit','Deposit online','A percentage deposit is charged online; the balance is paid at the spa.', 1),
+     ('booking_fee','Booking fee','A small fixed booking fee is charged online; the treatment is paid at the spa.', 1),
+     ('pay_at_spa','Pay at the spa','Free reservation. Everything is paid on arrival.', 0)`,
     []
   );
 

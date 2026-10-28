@@ -472,6 +472,21 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     );
   }
 
+  await run(
+    conn,
+    "ALTER TABLE payment_modes ADD COLUMN IF NOT EXISTS requires_online_payment TINYINT(1) NOT NULL DEFAULT 0"
+  );
+  await conn.query(
+    "UPDATE payment_modes SET requires_online_payment = 1 WHERE code IN ('full_prepay', 'deposit', 'booking_fee')"
+  );
+  await conn.query("UPDATE payment_modes SET requires_online_payment = 0 WHERE code = 'pay_at_spa'");
+  await conn.query(
+    `UPDATE spas
+     SET payment_mode_id = (SELECT id FROM payment_modes WHERE code = 'pay_at_spa' LIMIT 1),
+         deposit_bps = NULL,
+         booking_fee_minor = NULL`
+  );
+
   console.log("Schema patches applied.");
 }
 
