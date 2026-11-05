@@ -19,6 +19,7 @@ import { ClaimClinicControl, ClaimUiProvider } from "@/components/spa/ClaimClini
 import { UnclaimedListingAside } from "@/components/spa/ExpressInterestCard";
 import { WishlistButton } from "@/components/WishlistButton";
 import { ListingStickyNav } from "@/components/spa/ListingStickyNav";
+import { OnlineConsultationCard } from "@/components/spa/OnlineConsultationCard";
 
 // Booking inventory (treatments) must not stay stale after a vendor deletes one.
 export const dynamic = "force-dynamic";
@@ -87,6 +88,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
         showAmenities={showAmenities}
         showLocation={Boolean(loc)}
         showBooking={!spa.isUnclaimed}
+        showOnlineConsultation={!spa.isUnclaimed && spa.offersOnlineConsultation}
       >
         <div>
           <p className="text-sm uppercase tracking-wide text-veda-500">
@@ -195,11 +197,13 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
         {spa.isUnclaimed ? (
           <UnclaimedListingAside slug={spa.slug} />
         ) : (
-          <aside
-            id="listing-booking"
-            className="no-scrollbar scroll-mt-16 lg:sticky lg:top-[var(--listing-sticky-top,5rem)] lg:max-h-[calc(100vh-var(--listing-sticky-top,5rem)-0.75rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain"
-          >
-            <BookingWidget spa={spa} />
+          <aside className="no-scrollbar lg:sticky lg:top-[var(--listing-sticky-top,5rem)] lg:max-h-[calc(100vh-var(--listing-sticky-top,5rem)-0.75rem)] lg:self-start lg:overflow-y-auto lg:overscroll-contain">
+            <div id="listing-booking" className="scroll-mt-16">
+              <BookingWidget spa={spa} />
+            </div>
+            {spa.offersOnlineConsultation ? (
+              <OnlineConsultationCard slug={spa.slug} clinicName={spa.name} />
+            ) : null}
           </aside>
         )}
       </div>

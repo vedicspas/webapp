@@ -67,6 +67,29 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   );
   await run(
     conn,
+    "ALTER TABLE spas ADD COLUMN IF NOT EXISTS offers_online_consultation TINYINT(1) NOT NULL DEFAULT 0"
+  );
+  await run(
+    conn,
+    "ALTER TABLE spas ADD COLUMN IF NOT EXISTS online_consultation_url VARCHAR(500) NULL"
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS online_consultation_views (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      spa_id BIGINT UNSIGNED NOT NULL,
+      user_id BIGINT UNSIGNED NOT NULL,
+      open_id CHAR(36) NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_ocv_open (open_id),
+      KEY idx_ocv_spa (spa_id, created_at),
+      KEY idx_ocv_user (user_id),
+      CONSTRAINT fk_ocv_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+      CONSTRAINT fk_ocv_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
     `CREATE TABLE IF NOT EXISTS spa_languages (
       spa_id BIGINT UNSIGNED NOT NULL,
       language_id SMALLINT UNSIGNED NOT NULL,

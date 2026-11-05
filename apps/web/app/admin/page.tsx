@@ -449,6 +449,9 @@ export default function AdminPage() {
           <Link href="/admin/inquiries" className="text-veda-700 underline hover:text-veda-900">
             Inquiries{stats?.inquiries ? ` (${stats.inquiries})` : ""}
           </Link>
+          <Link href="/admin/consultation-views" className="text-veda-700 underline hover:text-veda-900">
+            Consultation views
+          </Link>
           <Link href="/admin/emails" className="text-veda-700 underline hover:text-veda-900">
             Emails
           </Link>

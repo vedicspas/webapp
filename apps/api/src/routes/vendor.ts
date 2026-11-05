@@ -83,6 +83,29 @@ async function assertSpaOwnership(
   return true;
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+const optionalHttpUrl = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((value) => {
+    const trimmed = (value ?? "").trim();
+    return trimmed === "" ? null : trimmed;
+  })
+  .refine((value) => value === null || value.length <= 500, {
+    message: "URL is too long",
+  })
+  .refine((value) => value === null || isHttpUrl(value), {
+    message: "Enter a valid URL starting with https://",
+  });
+
 const spaBodySchema = z.object({
   name: z.string().min(3).max(160),
   shortDescription: z.string().max(300).default(""),
@@ -97,7 +120,9 @@ const spaBodySchema = z.object({
   lng: z.number().min(-180).max(180),
   phone: z.string().max(32).nullable().default(null),
   email: z.string().email().nullable().default(null),
-  website: z.string().url().nullable().default(null),
+  website: optionalHttpUrl,
+  offersOnlineConsultation: z.boolean().default(false),
+  onlineConsultationUrl: optionalHttpUrl,
   shopifyCollectionHandle: z.string().max(160).nullable().default(null),
   paymentModeCode: z.enum(["full_prepay", "deposit", "booking_fee", "pay_at_spa"]),
   depositBps: z.number().int().min(500).max(10000).nullable().default(null),
@@ -159,8 +184,11 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       payment_mode_id: number;
       is_published: number;
       clinic_code: string;
+      offers_online_consultation: number;
     }>(
-      "SELECT id, slug, name, city_id, city_name, payment_mode_id, is_published, clinic_code FROM spas WHERE vendor_id = ? ORDER BY name",
+      `SELECT id, slug, name, city_id, city_name, payment_mode_id, is_published, clinic_code,
+         offers_online_consultation
+       FROM spas WHERE vendor_id = ? ORDER BY name`,
       [vendor.id]
     );
 
@@ -182,6 +210,18 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         )
       : [];
     const countBySpa = new Map(counts.map((c) => [c.spa_id, c]));
+    const consultCounts = spas.length
+      ? await query<{ spa_id: number; totalViews: number; uniqueViewers: number }>(
+          `SELECT spa_id,
+             COUNT(*) AS totalViews,
+             COUNT(DISTINCT user_id) AS uniqueViewers
+           FROM online_consultation_views
+           WHERE spa_id IN (${spas.map(() => "?").join(",")})
+           GROUP BY spa_id`,
+          spas.map((s) => s.id)
+        )
+      : [];
+    const consultBySpa = new Map(consultCounts.map((c) => [c.spa_id, c]));
 
     return {
       id: vendor.id,
@@ -200,6 +240,9 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         isPublished: Boolean(s.is_published),
         bookingsToday: Number(countBySpa.get(s.id)?.todayCount ?? 0),
         bookingsThisWeek: Number(countBySpa.get(s.id)?.weekCount ?? 0),
+        offersOnlineConsultation: Boolean(s.offers_online_consultation),
+        consultUniqueViewers: Number(consultBySpa.get(s.id)?.uniqueViewers ?? 0),
+        consultTotalViews: Number(consultBySpa.get(s.id)?.totalViews ?? 0),
       })),
     };
   });
@@ -326,13 +369,15 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       `INSERT INTO spas
         (vendor_id, clinic_code, slug, name, short_description, description, address_line, postal_code,
          country_id, state, city_name, city_id,
-         lat, lng, phone, email, website, shopify_collection_handle, payment_mode_id, deposit_bps,
+         lat, lng, phone, email, website, offers_online_consultation, online_consultation_url,
+         shopify_collection_handle, payment_mode_id, deposit_bps,
          booking_fee_minor, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         vendor.id, clinicCode, slug, body.name, body.shortDescription, body.description, body.addressLine,
         body.postalCode, body.countryId, body.state.trim(), body.cityName.trim(), cityId,
         body.lat, body.lng, body.phone, body.email, body.website,
+        body.offersOnlineConsultation ? 1 : 0, body.onlineConsultationUrl,
         body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0,
       ]
@@ -379,13 +424,15 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
 
     await execute(
       `UPDATE spas SET name=?, short_description=?, description=?, address_line=?, postal_code=?,
-         country_id=?, state=?, city_name=?, city_id=?, lat=?, lng=?, phone=?, email=?, website=?, shopify_collection_handle=?,
+         country_id=?, state=?, city_name=?, city_id=?, lat=?, lng=?, phone=?, email=?, website=?,
+         offers_online_consultation=?, online_consultation_url=?, shopify_collection_handle=?,
          payment_mode_id=?, deposit_bps=?, booking_fee_minor=?, currency_id=?, is_published=?
        WHERE id = ?`,
       [
         body.name, body.shortDescription, body.description, body.addressLine, body.postalCode,
         body.countryId, body.state.trim(), body.cityName.trim(), cityId,
         body.lat, body.lng, body.phone, body.email, body.website,
+        body.offersOnlineConsultation ? 1 : 0, body.onlineConsultationUrl,
         body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
         currency.id, body.isPublished ? 1 : 0, spaId,
       ]
@@ -407,7 +454,10 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       `SELECT id, slug, name, clinic_code AS clinicCode, short_description AS shortDescription, description,
          address_line AS addressLine, postal_code AS postalCode, country_id AS countryId, state,
          city_name AS cityName, city_id AS cityId, lat, lng,
-         phone, email, website, shopify_collection_handle AS shopifyCollectionHandle,
+         phone, email, website,
+         offers_online_consultation AS offersOnlineConsultation,
+         online_consultation_url AS onlineConsultationUrl,
+         shopify_collection_handle AS shopifyCollectionHandle,
          payment_mode_id AS paymentModeId, deposit_bps AS depositBps,
          booking_fee_minor AS bookingFeeMinor, currency_id AS currencyId, is_published AS isPublished
        FROM spas WHERE id = ? AND vendor_id = ?`,
@@ -464,6 +514,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       paymentModeCode: staticCache.paymentMode(Number(spa.paymentModeId))?.code,
       currencyCode: staticCache.currency(Number(spa.currencyId))?.code,
       isPublished: Boolean(spa.isPublished),
+      offersOnlineConsultation: Boolean(spa.offersOnlineConsultation),
+      onlineConsultationUrl: spa.onlineConsultationUrl ? String(spa.onlineConsultationUrl) : null,
       treatments: treatments.map((t) => ({
         ...t,
         categoryName: staticCache.treatmentCategoryName(t.categoryId),

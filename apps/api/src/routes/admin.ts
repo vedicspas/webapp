@@ -948,6 +948,42 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({ id: result.insertId, slug, clinicCode });
   });
 
+  app.get("/admin/consultation-views", async (request) => {
+    const { page, pageSize, offset } = pagination(request.query);
+    const [countRow] = await query<{ n: number }>(
+      "SELECT COUNT(*) AS n FROM online_consultation_views"
+    );
+    const items = await query<{
+      id: number;
+      spaId: number;
+      spaName: string;
+      clinicCode: string;
+      userId: number;
+      userName: string;
+      userEmail: string;
+      createdAt: string;
+    }>(
+      `SELECT v.id, v.spa_id AS spaId, s.name AS spaName, s.clinic_code AS clinicCode,
+         v.user_id AS userId, u.name AS userName, u.email AS userEmail,
+         v.created_at AS createdAt
+       FROM online_consultation_views v
+       JOIN spas s ON s.id = v.spa_id
+       JOIN users u ON u.id = v.user_id
+       ORDER BY v.created_at DESC, v.id DESC
+       LIMIT ? OFFSET ?`,
+      [pageSize, offset]
+    );
+    return {
+      items: items.map((row) => ({
+        ...row,
+        createdAt: new Date(row.createdAt).toISOString(),
+      })),
+      page,
+      pageSize,
+      total: Number(countRow?.n ?? 0),
+    };
+  });
+
   await adminClaimRoutes(app);
   await adminInquiryRoutes(app);
 }

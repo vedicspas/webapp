@@ -203,6 +203,8 @@ export interface SpaDetail extends SpaSummary {
   phone: string | null;
   email: string | null;
   website: string | null;
+  offersOnlineConsultation: boolean;
+  onlineConsultationUrl: string | null;
   shopifyCollectionHandle: string | null;
   depositBps: number | null;
   bookingFeeMinor: number | null;

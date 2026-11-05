@@ -12,12 +12,14 @@ export function ListingStickyNav({
   showAmenities,
   showLocation,
   showBooking,
+  showOnlineConsultation,
   children,
 }: {
   clinicName: string;
   showAmenities: boolean;
   showLocation: boolean;
   showBooking: boolean;
+  showOnlineConsultation?: boolean;
   children: React.ReactNode;
 }) {
   const sentinelRef = useRef<HTMLDivElement>(null);
@@ -30,11 +32,12 @@ export function ListingStickyNav({
     const items: Tab[] = [{ id: "listing-about", label: "About" }];
     if (showAmenities) items.push({ id: "listing-amenities", label: "Amenities" });
     items.push({ id: "listing-treatments", label: "Treatments" });
+    if (showOnlineConsultation) items.push({ id: "listing-online-consult", label: "Online consultation" });
     items.push({ id: "listing-reviews", label: "Reviews" });
     if (showLocation) items.push({ id: "listing-location", label: "Location" });
     if (showBooking) items.push({ id: "listing-booking", label: "Booking" });
     return items;
-  }, [showAmenities, showLocation, showBooking]);
+  }, [showAmenities, showLocation, showBooking, showOnlineConsultation]);
 
   useEffect(() => {
     const el = sentinelRef.current;
@@ -62,7 +65,12 @@ export function ListingStickyNav({
 
       let next = tabs[0]?.id ?? "listing-about";
       for (const section of ordered) {
-        if (section.id === "listing-booking" && desktop) continue;
+        if (
+          (section.id === "listing-booking" || section.id === "listing-online-consult") &&
+          desktop
+        ) {
+          continue;
+        }
         if (section.getBoundingClientRect().top <= offset) next = section.id;
       }
       setCurrent(next);

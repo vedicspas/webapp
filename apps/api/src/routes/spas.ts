@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { OpenHours, SpaDetail, Treatment } from "@vedic/shared";
-import { query, queryOne } from "../db/pool.js";
+import { execute, query, queryOne } from "../db/pool.js";
+import { requireAuth } from "../plugins/auth.js";
 import { staticCache } from "../cache/staticCache.js";
 import {
   SPA_SUMMARY_SELECT,
@@ -270,6 +271,8 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         phone: string | null;
         email: string | null;
         website: string | null;
+        offersOnlineConsultation: number;
+        onlineConsultationUrl: string | null;
         shopifyCollectionHandle: string | null;
         depositBps: number | null;
         bookingFeeMinor: number | null;
@@ -280,7 +283,10 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         `t.min_price AS priceFromMinor,
          s.vendor_id AS vendorId,
          s.description,
-         s.phone, s.email, s.website, s.shopify_collection_handle AS shopifyCollectionHandle,
+         s.phone, s.email, s.website,
+         s.offers_online_consultation AS offersOnlineConsultation,
+         s.online_consultation_url AS onlineConsultationUrl,
+         s.shopify_collection_handle AS shopifyCollectionHandle,
          s.deposit_bps AS depositBps, s.booking_fee_minor AS bookingFeeMinor`
       )} WHERE s.slug = ? AND s.is_published = 1`,
       [slug]
@@ -321,6 +327,8 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       phone: row.phone,
       email: row.email,
       website: row.website,
+      offersOnlineConsultation: Boolean(row.offersOnlineConsultation),
+      onlineConsultationUrl: row.offersOnlineConsultation ? row.onlineConsultationUrl : null,
       shopifyCollectionHandle: row.shopifyCollectionHandle,
       depositBps: row.depositBps === null ? null : Number(row.depositBps),
       bookingFeeMinor: row.bookingFeeMinor === null ? null : Number(row.bookingFeeMinor),
@@ -338,4 +346,62 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     reply.header("Cache-Control", "private, no-store");
     return detail;
   });
+
+  app.post("/spas/:slug/consultation-contact", async (request, reply) => {
+    await requireAuth(request, reply);
+    if (reply.sent) return;
+    const { slug } = request.params as { slug: string };
+    const body = z
+      .object({
+        openId: z
+          .string()
+          .regex(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+            "Invalid open id"
+          ),
+      })
+      .parse(request.body);
+
+    const spa = await queryOne<{
+      id: number;
+      name: string;
+      vendor_id: number | null;
+      offers_online_consultation: number;
+      phone: string | null;
+      email: string | null;
+      online_consultation_url: string | null;
+    }>(
+      `SELECT id, name, vendor_id, offers_online_consultation, phone, email, online_consultation_url
+       FROM spas WHERE slug = ? AND is_published = 1`,
+      [slug]
+    );
+    if (!spa || spa.vendor_id == null || !spa.offers_online_consultation) {
+      return reply.code(404).send({ error: "Online consultation is not available for this clinic" });
+    }
+
+    await execute(
+      `INSERT IGNORE INTO online_consultation_views (spa_id, user_id, open_id) VALUES (?,?,?)`,
+      [spa.id, request.user!.id, body.openId]
+    );
+
+    const bookingUrl = httpUrlOrNull(spa.online_consultation_url);
+    return {
+      clinicName: spa.name,
+      phone: spa.phone?.trim() || null,
+      email: spa.email?.trim() || null,
+      bookingUrl,
+    };
+  });
+}
+
+function httpUrlOrNull(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return trimmed;
+  } catch {
+    return null;
+  }
 }

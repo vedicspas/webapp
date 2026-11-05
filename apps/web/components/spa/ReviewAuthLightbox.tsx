@@ -12,11 +12,19 @@ export function ReviewAuthLightbox({
   onClose,
   onAuthenticated,
   onBeforeGoogle,
+  title = "Please login / sign up to submit your review",
+  description = "Your review stays on this page and will be posted as soon as you continue. New accounts join as a Visitor.",
+  loginSubmitLabel = "Sign in and post review",
+  signupSubmitLabel = "Create account and post review",
 }: {
   open: boolean;
   onClose: () => void;
-  onAuthenticated: () => void | Promise<void>;
+  onAuthenticated: (session?: { apiToken?: string } | null) => void | Promise<void>;
   onBeforeGoogle?: () => void;
+  title?: string;
+  description?: string;
+  loginSubmitLabel?: string;
+  signupSubmitLabel?: string;
 }) {
   const titleId = useId();
   const { update } = useSession();
@@ -58,8 +66,8 @@ export function ReviewAuthLightbox({
   if (!open) return null;
 
   async function finishAuth() {
-    await update();
-    await onAuthenticated();
+    const next = await update();
+    await onAuthenticated(next);
   }
 
   async function submitLogin(e: React.FormEvent) {
@@ -144,12 +152,9 @@ export function ReviewAuthLightbox({
         <div className="h-1.5 bg-gradient-to-r from-turmeric-400 via-veda-500 to-veda-800" />
         <div className="px-6 py-6 sm:px-8 sm:py-7">
           <p id={titleId} className="text-lg font-semibold text-veda-900">
-            Please login / sign up to submit your review
+            {title}
           </p>
-          <p className="mt-2 text-sm text-foreground/70">
-            Your review stays on this page and will be posted as soon as you continue. New accounts join as a
-            Visitor.
-          </p>
+          <p className="mt-2 text-sm text-foreground/70">{description}</p>
 
           <div className="mt-4 grid grid-cols-2 gap-1 rounded-full bg-veda-50 p-1 text-sm">
             <button
@@ -213,7 +218,7 @@ export function ReviewAuthLightbox({
                 disabled={busy}
                 className="w-full rounded-full bg-veda-700 py-2.5 font-medium text-white hover:bg-veda-600 disabled:opacity-50"
               >
-                {busy ? "Signing in…" : "Sign in and post review"}
+                {busy ? "Signing in…" : loginSubmitLabel}
               </button>
             </form>
           ) : (
@@ -254,7 +259,7 @@ export function ReviewAuthLightbox({
                 disabled={busy}
                 className="w-full rounded-full bg-veda-700 py-2.5 font-medium text-white hover:bg-veda-600 disabled:opacity-50"
               >
-                {busy ? "Creating account…" : "Create account and post review"}
+                {busy ? "Creating account…" : signupSubmitLabel}
               </button>
             </form>
           )}

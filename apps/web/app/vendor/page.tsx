@@ -21,6 +21,9 @@ interface VendorMe {
     isPublished: boolean;
     bookingsToday: number;
     bookingsThisWeek: number;
+    offersOnlineConsultation: boolean;
+    consultUniqueViewers: number;
+    consultTotalViews: number;
   }[];
 }
 
@@ -217,6 +220,13 @@ export default function VendorDashboardPage() {
                   View all bookings
                 </Link>
               </p>
+              {spa.offersOnlineConsultation ? (
+                <p className="mt-2 text-sm text-foreground/75">
+                  Online consultation contact views
+                  {" \u2014 "}
+                  Unique viewers {spa.consultUniqueViewers} | Total views {spa.consultTotalViews}
+                </p>
+              ) : null}
             </div>
           ))}
           {me.spas.length === 0 ? (

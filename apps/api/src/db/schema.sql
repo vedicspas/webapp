@@ -5,7 +5,7 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
-  contact_messages, site_settings,
+  contact_messages, site_settings, online_consultation_views,
   review_moderation_events, review_photos, review_responses, reviews, bookings, program_batches, program_runs, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
   spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
@@ -157,6 +157,8 @@ CREATE TABLE spas (
   phone VARCHAR(32) NULL,
   email VARCHAR(255) NULL,
   website VARCHAR(500) NULL,
+  offers_online_consultation TINYINT(1) NOT NULL DEFAULT 0,
+  online_consultation_url VARCHAR(500) NULL,
   shopify_collection_handle VARCHAR(160) NULL,
   payment_mode_id TINYINT UNSIGNED NOT NULL,
   deposit_bps SMALLINT UNSIGNED NULL,      -- only for payment mode 'deposit' (e.g. 2000 = 20%)
@@ -176,6 +178,19 @@ CREATE TABLE spas (
   CONSTRAINT fk_spa_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_spa_payment_mode FOREIGN KEY (payment_mode_id) REFERENCES payment_modes(id),
   CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE online_consultation_views (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  open_id CHAR(36) NOT NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_ocv_open (open_id),
+  KEY idx_ocv_spa (spa_id, created_at),
+  KEY idx_ocv_user (user_id),
+  CONSTRAINT fk_ocv_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_ocv_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE spa_claims (

@@ -126,6 +126,8 @@ interface SpaForm {
   phone: string | null;
   email: string | null;
   website: string | null;
+  offersOnlineConsultation: boolean;
+  onlineConsultationUrl: string | null;
   shopifyCollectionHandle: string | null;
   paymentModeCode: "full_prepay" | "deposit" | "booking_fee" | "pay_at_spa";
   depositBps: number | null;
@@ -168,6 +170,8 @@ const EMPTY: SpaForm = {
   phone: null,
   email: null,
   website: null,
+  offersOnlineConsultation: false,
+  onlineConsultationUrl: null,
   shopifyCollectionHandle: null,
   paymentModeCode: "pay_at_spa",
   depositBps: 2000,
@@ -186,6 +190,15 @@ const EMPTY: SpaForm = {
 
 const input = "w-full rounded-lg border border-veda-200 px-3 py-2 text-sm";
 const label = "block text-sm font-medium";
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
 
 export default function VendorSpaEditPage() {
   const { id } = useParams<{ id: string }>();
@@ -226,6 +239,7 @@ export default function VendorSpaEditPage() {
             { id: "edit-treatments", label: "Treatments & retreats" },
           ]
         : []),
+      { id: "edit-online-consult", label: "Online consultation" },
       { id: "edit-shop", label: "Shop (Shopify)" },
     ],
     [isNew],
@@ -275,6 +289,8 @@ export default function VendorSpaEditPage() {
       phone: string | null;
       email: string | null;
       website: string | null;
+      offersOnlineConsultation?: boolean | number;
+      onlineConsultationUrl?: string | null;
       shopifyCollectionHandle: string | null;
       paymentModeCode: SpaForm["paymentModeCode"];
       depositBps: number | null;
@@ -298,6 +314,8 @@ export default function VendorSpaEditPage() {
       amenityIds: data.amenityIds ?? [],
       accessibility: data.accessibility ?? "",
       familyAccommodation: data.familyAccommodation ?? null,
+      offersOnlineConsultation: Boolean(data.offersOnlineConsultation),
+      onlineConsultationUrl: data.onlineConsultationUrl ?? null,
     });
     setListingSlug(data.slug ?? null);
     setClinicCode(data.clinicCode ?? null);
@@ -390,6 +408,16 @@ export default function VendorSpaEditPage() {
         return;
       }
     }
+    const website = form.website?.trim() || null;
+    const onlineConsultationUrl = form.onlineConsultationUrl?.trim() || null;
+    if (website && !isHttpUrl(website)) {
+      toast("Enter a valid website link starting with https://", "error");
+      return;
+    }
+    if (onlineConsultationUrl && !isHttpUrl(onlineConsultationUrl)) {
+      toast("Enter a valid online consultation link starting with https://", "error");
+      return;
+    }
     setBusy(true);
     try {
       const selected = meta.paymentModes.find((m) => m.code === form.paymentModeCode);
@@ -406,7 +434,9 @@ export default function VendorSpaEditPage() {
         shopifyCollectionHandle: form.shopifyCollectionHandle || null,
         phone: form.phone || null,
         email: form.email || null,
-        website: form.website || null,
+        website,
+        offersOnlineConsultation: form.offersOnlineConsultation,
+        onlineConsultationUrl,
         languages: form.languages,
         dietaryOptions: form.dietaryOptions,
         airportPickup: form.airportPickup,
@@ -846,6 +876,17 @@ export default function VendorSpaEditPage() {
           <label className={label}>
             Public email
             <input className={input} value={form.email ?? ""} onChange={(e) => set({ email: e.target.value })} />
+          </label>
+          <label className={`${label} sm:col-span-2`}>
+            Website link
+            <input
+              className={input}
+              type="url"
+              inputMode="url"
+              placeholder="https://yourclinic.com"
+              value={form.website ?? ""}
+              onChange={(e) => set({ website: e.target.value })}
+            />
           </label>
         </div>
       </section>
@@ -1596,6 +1637,56 @@ export default function VendorSpaEditPage() {
           ))}
         </section>
       ) : null}
+
+      <section id="edit-online-consult" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
+        <h2 className="font-semibold text-veda-900">Online consultation</h2>
+        <fieldset>
+          <legend className="text-sm font-medium">Do you offer online consultations?</legend>
+          <div className="mt-2 flex flex-wrap gap-6">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="offers-online-consult"
+                checked={form.offersOnlineConsultation}
+                onChange={() => set({ offersOnlineConsultation: true })}
+              />
+              Yes
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="radio"
+                name="offers-online-consult"
+                checked={!form.offersOnlineConsultation}
+                onChange={() => set({ offersOnlineConsultation: false })}
+              />
+              No
+            </label>
+          </div>
+        </fieldset>
+        {form.offersOnlineConsultation ? (
+          <div className="space-y-3">
+            <label className={label}>
+              Online consultation booking or contact link (optional)
+              <input
+                className={input}
+                type="url"
+                inputMode="url"
+                placeholder="e.g. https://yourclinic.com/book-consultation"
+                value={form.onlineConsultationUrl ?? ""}
+                onChange={(e) => set({ onlineConsultationUrl: e.target.value })}
+              />
+            </label>
+            <p className="text-sm text-foreground/60">
+              Add a link where patients can request or book an online consultation.
+            </p>
+            <p className="pt-3 text-sm leading-relaxed text-foreground/55">
+              Patients will see the phone number and email address entered in the Contact section,
+              along with this link if provided, so they can contact your clinic directly.
+              AyurvedaAdvisor does not currently host video consultations.
+            </p>
+          </div>
+        ) : null}
+      </section>
 
       <section id="edit-shop" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Shop (Shopify)</h2>
