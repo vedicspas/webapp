@@ -194,6 +194,7 @@ export interface SpaSummary {
   currencyCode: string;
   paymentModeCode: PaymentModeCode;
   amenityIds: number[];
+  featured?: boolean;
 }
 
 export interface FeaturedSpaSummary extends SpaSummary {

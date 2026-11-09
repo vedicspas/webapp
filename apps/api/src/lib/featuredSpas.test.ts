@@ -10,7 +10,9 @@ import {
   planRemoveOrders,
   publicFeaturedSequence,
   publicPayloadHasNotes,
+  rankFeaturedFirst,
   requireAdminRole,
+  withFeaturedFirst,
   ADMIN_NOTES_MAX,
   type FeaturedRow,
 } from "./featuredSpas.js";
@@ -163,6 +165,51 @@ describe("featured public payload", () => {
   it("hides the homepage section when no eligible clinics remain", () => {
     const sequence = publicFeaturedSequence(list([[10, 1]]), [{ id: 10, isPublished: false }]);
     assert.deepEqual(sequence, []);
+  });
+});
+
+describe("featured search ranking", () => {
+  it("puts matching featured clinics first without duplicating them", () => {
+    const ranked = rankFeaturedFirst(
+      [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+      list([
+        [3, 1],
+        [1, 2],
+      ])
+    );
+    assert.deepEqual(
+      ranked.map((row) => row.id),
+      [3, 1, 2, 4]
+    );
+  });
+
+  it("ignores featured clinics that do not match the current filters", () => {
+    const ranked = rankFeaturedFirst(
+      [{ id: 2 }, { id: 4 }],
+      list([
+        [3, 1],
+        [4, 2],
+      ])
+    );
+    assert.deepEqual(
+      ranked.map((row) => row.id),
+      [4, 2]
+    );
+  });
+
+  it("keeps the original order when no featured clinics match", () => {
+    const ranked = rankFeaturedFirst([{ id: 8 }, { id: 9 }], list([[1, 1]]));
+    assert.deepEqual(
+      ranked.map((row) => row.id),
+      [8, 9]
+    );
+  });
+
+  it("prefixes listing SQL so featured rows sort ahead of the existing order", () => {
+    const sql = withFeaturedFirst("ratingAvg DESC, ratingCount DESC");
+    assert.match(sql, /fs\.spa_id IS NOT NULL/);
+    assert.match(sql, /fs\.display_order ASC/);
+    assert.ok(sql.endsWith("ratingAvg DESC, ratingCount DESC"));
   });
 });
 

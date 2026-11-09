@@ -299,6 +299,9 @@ export function FeaturedClinics({
             Featured Ayurvedic Clinics
           </h2>
           <span className="h-[3px] w-10 rounded-full bg-turmeric-400 sm:w-14" aria-hidden />
+          <Link href="/spas" className="ml-auto text-sm text-veda-600 hover:underline">
+            View all
+          </Link>
         </div>
         <p className="mt-1 text-sm text-foreground/65 sm:text-base">
           Handpicked destinations for authentic Ayurvedic care

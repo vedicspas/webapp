@@ -23,6 +23,7 @@ export interface SpaSummaryRow {
   ratingCount: number;
   priceFromMinor: number | null;
   distanceKm?: number;
+  featured?: number | boolean | null;
 }
 
 export const SPA_SUMMARY_SELECT = `
@@ -118,5 +119,6 @@ export function toSpaSummary(row: SpaSummaryRow, amenityIds: number[]): SpaSumma
     currencyCode: staticCache.currency(row.currencyId)?.code ?? "USD",
     paymentModeCode: (staticCache.paymentMode(row.paymentModeId)?.code ?? "pay_at_spa") as SpaSummary["paymentModeCode"],
     amenityIds,
+    featured: Boolean(Number(row.featured)),
   };
 }

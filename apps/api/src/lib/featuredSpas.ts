@@ -91,6 +91,28 @@ export function publicFeaturedSequence(
     .map((row) => row.spaId);
 }
 
+/** Prefix a listing ORDER BY so matching featured clinics stay first, once. */
+export function withFeaturedFirst(orderBy: string): string {
+  return `CASE WHEN fs.spa_id IS NOT NULL THEN 0 ELSE 1 END ASC, fs.display_order ASC, ${orderBy}`;
+}
+
+/** Stable sort: featured (by display_order) then the original matching list, no duplicates. */
+export function rankFeaturedFirst<T extends { id: number }>(
+  items: T[],
+  featured: FeaturedRow[]
+): T[] {
+  const order = new Map(featured.map((row) => [row.spaId, row.displayOrder]));
+  return [...items].sort((a, b) => {
+    const fa = order.get(a.id);
+    const fb = order.get(b.id);
+    const aFeat = fa != null;
+    const bFeat = fb != null;
+    if (aFeat !== bFeat) return aFeat ? -1 : 1;
+    if (aFeat && bFeat) return (fa ?? 0) - (fb ?? 0) || a.id - b.id;
+    return 0;
+  });
+}
+
 export function omitAdminNotes<T extends { adminNotes?: unknown }>(
   value: T
 ): Omit<T, "adminNotes"> {

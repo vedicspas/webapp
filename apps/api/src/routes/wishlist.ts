@@ -11,8 +11,12 @@ import {
 export async function wishlistRoutes(app: FastifyInstance): Promise<void> {
   app.get("/wishlist", { preHandler: requireAuth }, async (request) => {
     const rows = await query<SpaSummaryRow>(
-      `${SPA_SUMMARY_SELECT}
+      `${SPA_SUMMARY_SELECT.replace(
+        "t.min_price AS priceFromMinor",
+        "t.min_price AS priceFromMinor, (fs.spa_id IS NOT NULL) AS featured"
+      )}
        JOIN wishlist_items w ON w.spa_id = s.id
+       LEFT JOIN featured_spas fs ON fs.spa_id = s.id
        WHERE w.user_id = ? AND s.is_published = 1
        ORDER BY w.created_at DESC`,
       [request.user!.id]

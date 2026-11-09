@@ -22,6 +22,11 @@ export function SpaCard({ spa }: { spa: SpaSummary & { distanceKm?: number } }) 
           <div className="h-full w-full bg-veda-100" />
         )}
         <WishlistButton spaId={spa.id} className="absolute right-3 top-3" />
+        {spa.featured ? (
+          <span className="absolute left-3 top-3 rounded-full bg-turmeric-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-turmeric-800">
+            Featured
+          </span>
+        ) : null}
         {spa.distanceKm !== undefined ? (
           <span className="absolute bottom-3 left-3 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
             {spa.distanceKm.toFixed(1)} km away

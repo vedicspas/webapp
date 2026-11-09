@@ -11,7 +11,7 @@ import {
   toSpaSummary,
   type SpaSummaryRow,
 } from "../lib/spaQueries.js";
-import { publicPayloadHasNotes } from "../lib/featuredSpas.js";
+import { publicPayloadHasNotes, withFeaturedFirst } from "../lib/featuredSpas.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
 import { loadSpaStay } from "../lib/spaStay.js";
 import { loadProgramRuns, weekdaysFromMask } from "../lib/treatmentSchedule.js";
@@ -239,15 +239,15 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
 
     const baseSql = `${SPA_SUMMARY_SELECT.replace(
       "t.min_price AS priceFromMinor",
-      `t.min_price AS priceFromMinor${distanceSelect}`
-    )} WHERE ${where.join(" AND ")} ${having}`;
+      `t.min_price AS priceFromMinor${distanceSelect}, (fs.spa_id IS NOT NULL) AS featured`
+    )} LEFT JOIN featured_spas fs ON fs.spa_id = s.id WHERE ${where.join(" AND ")} ${having}`;
 
     const countRows = await query<{ id: number }>(baseSql, args);
     const total = countRows.length;
 
     const offset = (params.page - 1) * PAGE_SIZE;
     const rows = await query<SpaSummaryRow>(
-      `${baseSql} ORDER BY ${orderBy} LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
+      `${baseSql} ORDER BY ${withFeaturedFirst(orderBy)} LIMIT ${PAGE_SIZE} OFFSET ${offset}`,
       [...args, ...orderArgs]
     );
 
@@ -275,6 +275,7 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
     const tags = await categoryTagsBySpa(spaIds);
     const items: FeaturedSpaSummary[] = rows.map((row) => ({
       ...toSpaSummary(row, amenities.get(row.id) ?? []),
+      featured: true,
       tags: tags.get(row.id) ?? [],
     }));
     const payload = { items };
