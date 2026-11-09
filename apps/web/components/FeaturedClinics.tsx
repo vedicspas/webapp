@@ -41,7 +41,7 @@ function FeaturedClinicCard({
 }) {
   const place = cityCountry(spa);
   return (
-    <article className="featured-clinic-card h-full overflow-hidden rounded-2xl border border-[#829186] bg-white shadow-sm">
+    <article className="featured-clinic-card min-h-full w-full flex-1 overflow-hidden rounded-2xl border border-[#829186] bg-white shadow-sm">
       <Link href={`/spas/${spa.slug}`} className="featured-clinic-card__media">
         {spa.coverPhotoUrl ? (
           <>
@@ -69,30 +69,32 @@ function FeaturedClinicCard({
           Featured
         </span>
         <WishlistButton spaId={spa.id} className="absolute right-3 top-3" />
-        <h3 className="mt-1.5 pr-10 font-semibold leading-snug text-veda-900">
+        <h3 className="mt-1.5 line-clamp-2 min-h-[2.75rem] pr-10 font-semibold leading-snug text-veda-900">
           <Link href={`/spas/${spa.slug}`} className="hover:underline">
             {spa.name}
           </Link>
         </h3>
         {place ? (
-          <p className="mt-1 flex items-center gap-1 text-sm text-foreground/60">
+          <p className="mt-1 flex min-h-[1.25rem] items-center gap-1 text-sm text-foreground/60">
             <PinIcon />
-            <span>{place}</span>
+            <span className="truncate">{place}</span>
           </p>
-        ) : null}
-        <div className="mt-1">
+        ) : (
+          <p className="mt-1 min-h-[1.25rem]" aria-hidden />
+        )}
+        <div className="mt-1 min-h-[1.25rem]">
           <RatingStars rating={spa.ratingAvg} count={spa.ratingCount} />
         </div>
-        {spa.shortDescription ? (
-          <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-foreground/70">{spa.shortDescription}</p>
-        ) : null}
-        {spa.tags.length > 0 ? (
-          <div className="mt-3">
+        <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-relaxed text-foreground/70">
+          {spa.shortDescription}
+        </p>
+        <div className="mt-3 min-h-[1.5rem]">
+          {spa.tags.length > 0 ? (
             <span className="inline-block rounded-full bg-turmeric-100 px-2.5 py-0.5 text-xs text-turmeric-800">
               {spa.tags.join(" · ")}
             </span>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         <div className="mt-auto flex items-end justify-between gap-3 pt-4">
           {spa.priceFromMinor !== null ? (
             <p className="text-sm text-foreground/70">
@@ -335,7 +337,7 @@ export function FeaturedClinics({
           >
             <div
               ref={trackRef}
-              className="flex"
+              className="flex items-stretch"
               style={{
                 gap: GAP_PX,
                 transform: `translate3d(${offset}px, 0, 0)`,
@@ -353,7 +355,7 @@ export function FeaturedClinics({
                 return (
                   <div
                     key={`${spa.id}-${i}`}
-                    className="flex h-full shrink-0"
+                    className="flex shrink-0 self-stretch"
                     style={{ width: cardWidth || undefined, flexBasis: cardWidth || undefined }}
                     aria-hidden={!visible}
                   >

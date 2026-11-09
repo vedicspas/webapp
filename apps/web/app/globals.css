@@ -122,6 +122,7 @@ input:disabled {
 */
 .featured-clinic-card {
   display: grid;
+  width: 100%;
   grid-template-columns: minmax(8.5rem, 42%) minmax(0, 1fr);
   align-items: stretch;
 }
