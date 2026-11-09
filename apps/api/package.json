@@ -7,7 +7,7 @@
     "dev": "tsx watch src/index.ts",
     "build": "tsc && node -e \"const fs=require('fs');fs.copyFileSync('src/db/schema.sql','dist/db/schema.sql');fs.mkdirSync('dist/db/migrations',{recursive:true});for (const f of fs.readdirSync('src/db/migrations')) fs.copyFileSync('src/db/migrations/'+f,'dist/db/migrations/'+f);\"",
     "start": "node dist/index.js",
-    "test": "tsx --test src/lib/reviews.test.ts",
+    "test": "tsx --test src/lib/reviews.test.ts src/lib/featuredSpas.test.ts",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:migrate:reviews": "tsx src/db/migrateReviews.ts",
     "db:seed": "tsx src/db/seed.ts",

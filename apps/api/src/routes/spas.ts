@@ -1,15 +1,17 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
-import type { OpenHours, SpaDetail, Treatment } from "@vedic/shared";
+import type { FeaturedSpaSummary, OpenHours, SpaDetail, Treatment } from "@vedic/shared";
 import { execute, query, queryOne } from "../db/pool.js";
 import { requireAuth } from "../plugins/auth.js";
 import { staticCache } from "../cache/staticCache.js";
 import {
   SPA_SUMMARY_SELECT,
   amenityIdsBySpa,
+  categoryTagsBySpa,
   toSpaSummary,
   type SpaSummaryRow,
 } from "../lib/spaQueries.js";
+import { publicPayloadHasNotes } from "../lib/featuredSpas.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
 import { loadSpaStay } from "../lib/spaStay.js";
 import { loadProgramRuns, weekdaysFromMask } from "../lib/treatmentSchedule.js";
@@ -259,6 +261,27 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       pageSize: PAGE_SIZE,
       total,
     };
+  });
+
+  app.get("/spas/featured", async () => {
+    const rows = await query<SpaSummaryRow>(
+      `${SPA_SUMMARY_SELECT}
+       INNER JOIN featured_spas fs ON fs.spa_id = s.id
+       WHERE s.is_published = 1
+       ORDER BY fs.display_order ASC, s.id ASC`
+    );
+    const spaIds = rows.map((row) => row.id);
+    const amenities = await amenityIdsBySpa(spaIds);
+    const tags = await categoryTagsBySpa(spaIds);
+    const items: FeaturedSpaSummary[] = rows.map((row) => ({
+      ...toSpaSummary(row, amenities.get(row.id) ?? []),
+      tags: tags.get(row.id) ?? [],
+    }));
+    const payload = { items };
+    if (publicPayloadHasNotes(payload)) {
+      throw Object.assign(new Error("Internal notes leaked into a public payload"), { statusCode: 500 });
+    }
+    return payload;
   });
 
   app.get("/spas/:slug", async (request, reply) => {

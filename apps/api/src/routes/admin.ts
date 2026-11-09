@@ -11,6 +11,13 @@ import { allocateClinicCode } from "../lib/bookingRefs.js";
 import { adminClaimRoutes } from "./claims.js";
 import { adminInquiryRoutes } from "./inquiries.js";
 import { OTHER_MEDICAL_CONDITION_CATEGORY } from "../db/lookups.js";
+import {
+  loadFeaturedAdmin,
+  parseAdminNotes,
+  parseDisplayOrder,
+  removeFeaturedSpa,
+  upsertFeaturedSpa,
+} from "../lib/featuredSpas.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -51,6 +58,8 @@ const clinicFilters = z.object({
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   categoryIds: z.string().optional(),
+  featured: z.string().optional(),
+  status: z.enum(["all", "unclaimed", "published", "waiting"]).optional(),
   page: z.string().optional(),
   pageSize: z.string().optional(),
 });
@@ -179,9 +188,28 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       );
       values.push(...categoryIds);
     }
+    const featuredOnly = q.featured === "1" || q.featured === "true";
+    if (featuredOnly) {
+      where.push("fs.spa_id IS NOT NULL");
+    }
+    if (q.status === "unclaimed") {
+      where.push("s.vendor_id IS NULL");
+    } else if (q.status === "published") {
+      where.push("s.is_published = 1");
+    } else if (q.status === "waiting") {
+      where.push("s.vendor_id IS NOT NULL");
+      where.push("s.is_published = 0");
+    }
     const whereSql = where.join(" AND ");
+    const orderSql = featuredOnly
+      ? "fs.display_order ASC, s.name ASC"
+      : "s.created_at DESC";
     const totalRow = await queryOne<{ n: number }>(
-      `SELECT COUNT(*) AS n FROM spas s LEFT JOIN vendors v ON v.id = s.vendor_id WHERE ${whereSql}`,
+      `SELECT COUNT(*) AS n
+       FROM spas s
+       LEFT JOIN vendors v ON v.id = s.vendor_id
+       LEFT JOIN featured_spas fs ON fs.spa_id = s.id
+       WHERE ${whereSql}`,
       values
     );
     const rows = await query<{
@@ -198,14 +226,18 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       vendor_status: string | null;
       pending_claims: number;
       inquiry_count: number;
+      featured_order: number | null;
     }>(
       `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published, s.origin,
          v.id AS vendor_id, v.business_name, v.status AS vendor_status,
          (SELECT COUNT(*) FROM spa_claims c WHERE c.spa_id = s.id AND c.status = 'pending') AS pending_claims,
-         (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count
-       FROM spas s LEFT JOIN vendors v ON v.id = s.vendor_id
+         (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count,
+         fs.display_order AS featured_order
+       FROM spas s
+       LEFT JOIN vendors v ON v.id = s.vendor_id
+       LEFT JOIN featured_spas fs ON fs.spa_id = s.id
        WHERE ${whereSql}
-       ORDER BY s.created_at DESC
+       ORDER BY ${orderSql}
        LIMIT ${pageSize} OFFSET ${offset}`,
       values
     );
@@ -224,6 +256,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         isUnclaimed: r.vendor_id == null,
         pendingClaims: Number(r.pending_claims ?? 0),
         inquiryCount: Number(r.inquiry_count ?? 0),
+        featuredOrder: r.featured_order == null ? null : Number(r.featured_order),
       })),
       categories: allCategories(),
       page,
@@ -946,6 +979,43 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       ]
     );
     return reply.code(201).send({ id: result.insertId, slug, clinicCode });
+  });
+
+  app.get("/admin/spas/:id/featured", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(spaId) || spaId <= 0) {
+      return reply.code(400).send({ error: "Invalid clinic" });
+    }
+    return loadFeaturedAdmin(spaId);
+  });
+
+  app.put("/admin/spas/:id/featured", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(spaId) || spaId <= 0) {
+      return reply.code(400).send({ error: "Invalid clinic" });
+    }
+    const body = z
+      .object({
+        displayOrder: z.union([z.number(), z.string()]),
+        adminNotes: z.string().max(1000).nullable().optional(),
+      })
+      .parse(request.body);
+    const result = await upsertFeaturedSpa(
+      spaId,
+      parseDisplayOrder(body.displayOrder),
+      parseAdminNotes(body.adminNotes ?? null),
+      request.user!.id
+    );
+    return { ok: true, ...result };
+  });
+
+  app.delete("/admin/spas/:id/featured", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(spaId) || spaId <= 0) {
+      return reply.code(400).send({ error: "Invalid clinic" });
+    }
+    await removeFeaturedSpa(spaId, request.user!.id);
+    return { ok: true };
   });
 
   app.get("/admin/consultation-views", async (request) => {

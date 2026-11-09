@@ -10,13 +10,23 @@ export function RemotePhoto({
   src,
   alt,
   className,
+  loading,
+  fetchPriority,
 }: {
   src: string;
   alt: string;
   className?: string;
+  loading?: "eager" | "lazy";
+  fetchPriority?: "high" | "low" | "auto";
 }) {
   return (
     // eslint-disable-next-line @next/next/no-img-element
-    <img src={resolvePhotoSrc(src)} alt={alt} className={className} />
+    <img
+      src={resolvePhotoSrc(src)}
+      alt={alt}
+      className={className}
+      loading={loading}
+      fetchPriority={fetchPriority}
+    />
   );
 }

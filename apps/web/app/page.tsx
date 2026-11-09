@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { getMetaSafe, searchSpas } from "@/lib/api";
+import { getFeaturedSpas, getMetaSafe, searchSpas } from "@/lib/api";
 import { SpaCard } from "@/components/SpaCard";
+import { FeaturedClinics } from "@/components/FeaturedClinics";
 import { HomeSearchBar } from "@/components/HomeSearchBar";
 
 // Fully prerendered at build time, refreshed in the background every 5 minutes.
@@ -8,7 +9,10 @@ export const revalidate = 300;
 
 export default async function HomePage() {
   const meta = await getMetaSafe();
-  const featured = await searchSpas("sort=rating&page=1").catch(() => ({
+  const featuredClinics = await getFeaturedSpas().catch(() => ({
+    items: [] as Awaited<ReturnType<typeof getFeaturedSpas>>["items"],
+  }));
+  const topRated = await searchSpas("sort=rating&page=1").catch(() => ({
     items: [] as Awaited<ReturnType<typeof searchSpas>>["items"],
     page: 1,
     pageSize: 12,
@@ -17,7 +21,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <section className="bg-veda-800 px-4 pb-16 pt-12 text-white">
+      <section className="bg-veda-800 px-4 pb-16 pt-8 text-white">
         <div className="mx-auto max-w-6xl text-center">
           <h1 className="text-3xl font-bold leading-tight sm:text-5xl">
             Find Ayurvedic care that fits your needs
@@ -30,6 +34,8 @@ export default async function HomePage() {
           </div>
         </div>
       </section>
+
+      <FeaturedClinics spas={featuredClinics.items} />
 
       <section className="mx-auto max-w-6xl px-4 py-10">
         <h2 className="mb-4 text-xl font-semibold text-veda-900">Popular destinations</h2>
@@ -69,7 +75,7 @@ export default async function HomePage() {
           </Link>
         </div>
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {featured.items.slice(0, 6).map((spa) => (
+          {topRated.items.slice(0, 6).map((spa) => (
             <SpaCard key={spa.id} spa={spa} />
           ))}
         </div>

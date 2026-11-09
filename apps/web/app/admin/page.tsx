@@ -12,6 +12,7 @@ import { PaginationBar } from "@/components/PaginationBar";
 import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { InquiryTable, type AdminInquiry } from "@/components/admin/InquiryTable";
 import { DateField } from "@/components/DateField";
+import { FeaturedClinicModal, type FeaturedClinicTarget } from "@/components/admin/FeaturedClinicModal";
 
 interface Stats {
   users: number;
@@ -54,6 +55,7 @@ interface AdminSpa {
   isUnclaimed: boolean;
   pendingClaims: number;
   inquiryCount: number;
+  featuredOrder: number | null;
 }
 
 interface AdminReview {
@@ -114,6 +116,14 @@ interface Paged<T> {
 }
 
 type Tab = "vendors" | "spas" | "reviews" | "bookings" | "messages";
+type ListingStatus = "all" | "unclaimed" | "published" | "waiting";
+
+const LISTING_STATUS_FILTERS: Array<{ id: ListingStatus; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "unclaimed", label: "Unclaimed" },
+  { id: "published", label: "Published" },
+  { id: "waiting", label: "Waiting for approval" },
+];
 
 const STATUS_BADGE: Record<VendorStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -181,13 +191,18 @@ export default function AdminPage() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
+  const [featuredOnly, setFeaturedOnly] = useState(false);
+  const [listingStatus, setListingStatus] = useState<ListingStatus>("all");
   const [appliedClinic, setAppliedClinic] = useState({
     clinicName: "",
     clinicId: "",
     from: "",
     to: "",
     categoryIds: [] as number[],
+    featuredOnly: false,
+    listingStatus: "all" as ListingStatus,
   });
+  const [featuredSpa, setFeaturedSpa] = useState<FeaturedClinicTarget | null>(null);
   const [appliedVendor, setAppliedVendor] = useState({ name: "", email: "", from: "", to: "" });
   const [contactName, setContactName] = useState("");
   const [contactEmail, setContactEmail] = useState("");
@@ -212,6 +227,10 @@ export default function AdminPage() {
     if (appliedClinic.from) q.set("from", appliedClinic.from);
     if (appliedClinic.to) q.set("to", appliedClinic.to);
     if (appliedClinic.categoryIds.length) q.set("categoryIds", appliedClinic.categoryIds.join(","));
+    if (appliedClinic.featuredOnly) q.set("featured", "1");
+    if (appliedClinic.listingStatus && appliedClinic.listingStatus !== "all") {
+      q.set("status", appliedClinic.listingStatus);
+    }
     q.set("page", String(page));
     q.set("pageSize", String(pageSize));
     return q.toString();
@@ -388,7 +407,7 @@ export default function AdminPage() {
       onSubmit={(e) => {
         e.preventDefault();
         setPage(1);
-        setAppliedClinic({ clinicName, clinicId, from, to, categoryIds });
+        setAppliedClinic({ clinicName, clinicId, from, to, categoryIds, featuredOnly, listingStatus });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -415,6 +434,43 @@ export default function AdminPage() {
         </label>
       </div>
       <CategoryChips categories={categories} selected={categoryIds} onChange={setCategoryIds} />
+      {tab === "spas" ? (
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-2">
+            {LISTING_STATUS_FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setListingStatus(item.id);
+                  setAppliedClinic((current) => ({ ...current, listingStatus: item.id }));
+                  setPage(1);
+                }}
+                className={`rounded-full px-4 py-1.5 text-sm ${
+                  listingStatus === item.id
+                    ? "bg-veda-700 text-white"
+                    : "border border-veda-300 text-veda-800 hover:bg-veda-50"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={featuredOnly}
+              onChange={(e) => {
+                const on = e.target.checked;
+                setFeaturedOnly(on);
+                setAppliedClinic((current) => ({ ...current, featuredOnly: on }));
+                setPage(1);
+              }}
+            />
+            Featured listings only
+          </label>
+        </div>
+      ) : null}
       <div className="flex flex-wrap justify-center gap-3">
         <button type="submit" className="rounded-full bg-blue-600 px-5 py-1.5 text-sm font-medium text-white hover:bg-blue-500">
           Search
@@ -428,7 +484,17 @@ export default function AdminPage() {
             setFrom("");
             setTo("");
             setCategoryIds([]);
-            setAppliedClinic({ clinicName: "", clinicId: "", from: "", to: "", categoryIds: [] });
+            setFeaturedOnly(false);
+            setListingStatus("all");
+            setAppliedClinic({
+              clinicName: "",
+              clinicId: "",
+              from: "",
+              to: "",
+              categoryIds: [],
+              featuredOnly: false,
+              listingStatus: "all",
+            });
             setPage(1);
           }}
         >
@@ -666,18 +732,60 @@ export default function AdminPage() {
                     >
                       Inquiries ({s.inquiryCount})
                     </button>
+                    {s.featuredOrder != null ? (
+                      <>
+                        {" "}
+                        &middot;{" "}
+                        <span className="rounded-full bg-turmeric-100 px-2 py-0.5 text-xs font-medium text-turmeric-800">
+                          Featured #{s.featuredOrder}
+                        </span>
+                      </>
+                    ) : null}
                   </p>
                 </div>
-                <button
-                  onClick={() => setSpaPublished(s.id, !s.isPublished)}
-                  className={`rounded-full px-4 py-1.5 text-sm ${
-                    s.isPublished
-                      ? "border border-red-300 text-red-700 hover:bg-red-50"
-                      : "bg-veda-700 text-white hover:bg-veda-600"
-                  }`}
-                >
-                  {s.isPublished ? "Unpublish" : "Publish"}
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  {s.featuredOrder != null ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFeaturedSpa({
+                          id: s.id,
+                          name: s.name,
+                          isPublished: s.isPublished,
+                          featuredOrder: s.featuredOrder,
+                        })
+                      }
+                      className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+                    >
+                      Manage featured
+                    </button>
+                  ) : s.isPublished ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFeaturedSpa({
+                          id: s.id,
+                          name: s.name,
+                          isPublished: s.isPublished,
+                          featuredOrder: null,
+                        })
+                      }
+                      className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+                    >
+                      Make featured
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => setSpaPublished(s.id, !s.isPublished)}
+                    className={`rounded-full px-4 py-1.5 text-sm ${
+                      s.isPublished
+                        ? "border border-red-300 text-red-700 hover:bg-red-50"
+                        : "bg-veda-700 text-white hover:bg-veda-600"
+                    }`}
+                  >
+                    {s.isPublished ? "Unpublish" : "Publish"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -906,6 +1014,15 @@ export default function AdminPage() {
           />
         </div>
       ) : null}
+
+      <FeaturedClinicModal
+        spa={featuredSpa}
+        call={call}
+        onClose={() => setFeaturedSpa(null)}
+        onSaved={() => {
+          loadTab();
+        }}
+      />
 
       {inquiryPopup ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation">

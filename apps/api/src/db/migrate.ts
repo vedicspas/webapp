@@ -90,6 +90,38 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   );
   await run(
     conn,
+    `CREATE TABLE IF NOT EXISTS featured_spas (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      spa_id BIGINT UNSIGNED NOT NULL,
+      display_order SMALLINT UNSIGNED NOT NULL,
+      admin_notes VARCHAR(1000) NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      created_by_user_id BIGINT UNSIGNED NULL,
+      updated_by_user_id BIGINT UNSIGNED NULL,
+      UNIQUE KEY uq_featured_spa (spa_id),
+      KEY idx_featured_order (display_order),
+      CONSTRAINT fk_featured_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+      CONSTRAINT fk_featured_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+      CONSTRAINT fk_featured_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS featured_spa_events (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      spa_id BIGINT UNSIGNED NOT NULL,
+      action ENUM('featured','removed') NOT NULL,
+      display_order SMALLINT UNSIGNED NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by_user_id BIGINT UNSIGNED NULL,
+      KEY idx_fse_spa (spa_id, created_at),
+      CONSTRAINT fk_fse_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+      CONSTRAINT fk_fse_user FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
+  await run(
+    conn,
     `CREATE TABLE IF NOT EXISTS spa_languages (
       spa_id BIGINT UNSIGNED NOT NULL,
       language_id SMALLINT UNSIGNED NOT NULL,

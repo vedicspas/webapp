@@ -5,6 +5,7 @@ import type {
   Question,
   ReviewListResponse,
   SiteSettings,
+  FeaturedSpaSummary,
   SpaDetail,
   SpaSummary,
   StaticMeta,
@@ -97,6 +98,8 @@ export const getSpaSlugs = () => api<string[]>("/spas/slugs", { revalidate: 300 
 export const getSpa = (slug: string) => api<SpaDetail>(`/spas/${slug}`, { revalidate: false });
 export const searchSpas = (qs: string) =>
   api<Paginated<SpaSummary & { distanceKm?: number }>>(`/spas?${qs}`, { revalidate: 60 });
+export const getFeaturedSpas = () =>
+  api<{ items: FeaturedSpaSummary[] }>("/spas/featured", { revalidate: 300 });
 export const getReviews = (slug: string, page = 1) =>
   api<ReviewListResponse>(`/spas/${slug}/reviews?page=${page}`, { revalidate: 60 });
 export const getQuestions = (slug: string) =>

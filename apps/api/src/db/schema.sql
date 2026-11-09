@@ -6,6 +6,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   contact_messages, site_settings, online_consultation_views,
+  featured_spa_events, featured_spas,
   review_moderation_events, review_photos, review_responses, reviews, bookings, program_batches, program_runs, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
   spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
@@ -191,6 +192,34 @@ CREATE TABLE online_consultation_views (
   KEY idx_ocv_user (user_id),
   CONSTRAINT fk_ocv_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
   CONSTRAINT fk_ocv_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE featured_spas (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  display_order SMALLINT UNSIGNED NOT NULL,
+  admin_notes VARCHAR(1000) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  created_by_user_id BIGINT UNSIGNED NULL,
+  updated_by_user_id BIGINT UNSIGNED NULL,
+  UNIQUE KEY uq_featured_spa (spa_id),
+  KEY idx_featured_order (display_order),
+  CONSTRAINT fk_featured_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_featured_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL,
+  CONSTRAINT fk_featured_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE featured_spa_events (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  action ENUM('featured','removed') NOT NULL,
+  display_order SMALLINT UNSIGNED NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by_user_id BIGINT UNSIGNED NULL,
+  KEY idx_fse_spa (spa_id, created_at),
+  CONSTRAINT fk_fse_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_fse_user FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE spa_claims (

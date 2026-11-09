@@ -196,6 +196,10 @@ export interface SpaSummary {
   amenityIds: number[];
 }
 
+export interface FeaturedSpaSummary extends SpaSummary {
+  tags: string[];
+}
+
 export interface SpaDetail extends SpaSummary {
   vendorId: number | null;
   isUnclaimed: boolean;
