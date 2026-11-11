@@ -339,7 +339,7 @@ export function FeaturedClinics({
   const offset = cardWidth > 0 ? -(shift * step) + drag : 0;
 
   return (
-    <section className={`bg-white px-4 py-8 lg:py-10 ${className}`.trim()} aria-labelledby={headingId}>
+    <section className={`bg-white px-4 pb-0 pt-4 lg:pt-5 ${className}`.trim()} aria-labelledby={headingId}>
       <div
         className="relative mx-auto max-w-6xl"
         aria-roledescription="carousel"
@@ -461,6 +461,7 @@ export function FeaturedClinics({
             );
           })}
         </div>
+        <div className="mt-8 h-px bg-neutral-200" aria-hidden />
       </div>
     </section>
   );

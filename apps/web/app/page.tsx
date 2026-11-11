@@ -21,7 +21,7 @@ export default async function HomePage() {
 
   return (
     <div>
-      <section className="bg-white px-4 pb-16 pt-8">
+      <section className="bg-white px-4 pb-8 pt-8">
         <div className="mx-auto max-w-6xl text-center">
           <h1 className="text-3xl font-bold leading-tight text-veda-900 sm:text-5xl">
             Find Ayurvedic care that fits your needs
@@ -37,7 +37,7 @@ export default async function HomePage() {
 
       <FeaturedClinics spas={featuredClinics.items} />
 
-      <section className="mx-auto max-w-6xl px-4 py-10">
+      <section className="mx-auto max-w-6xl px-4 pb-10 pt-8">
         <h2 className="mb-4 text-xl font-semibold text-veda-900">Popular destinations</h2>
         <div className="flex flex-wrap gap-2">
           {meta.cities.map((city) => (
