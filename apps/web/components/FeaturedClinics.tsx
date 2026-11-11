@@ -32,6 +32,87 @@ function PinIcon() {
   );
 }
 
+function treatmentList(spa: FeaturedSpaSummary): string[] {
+  const source = spa.treatmentNames?.length ? spa.treatmentNames : spa.tags;
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const name of source) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    names.push(name);
+  }
+  return names;
+}
+
+function FeaturedTagPill({ spa }: { spa: FeaturedSpaSummary }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const treatments = treatmentList(spa);
+  const listed = spa.tags[0] ?? treatments[0];
+  const more = Math.max(0, treatments.length - 1);
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(event: PointerEvent) {
+      if (rootRef.current?.contains(event.target as Node)) return;
+      setOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [open]);
+
+  if (!listed) return null;
+
+  function hoverSupported() {
+    return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  }
+
+  return (
+    <div
+      ref={rootRef}
+      className="relative mt-3 min-h-[1.5rem]"
+      onMouseEnter={() => {
+        if (more > 0 && hoverSupported()) setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (hoverSupported()) setOpen(false);
+      }}
+      onClick={() => {
+        if (more === 0 || hoverSupported()) return;
+        setOpen((current) => !current);
+      }}
+    >
+      {open && more > 0 ? (
+        <div
+          role="tooltip"
+          className="absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-full max-w-[16.5rem] rounded-xl border border-veda-100 bg-white/95 p-3 shadow-lg backdrop-blur-sm"
+        >
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-turmeric-700">Treatments</p>
+          <ul className="max-h-36 space-y-1.5 overflow-y-auto">
+            {treatments.map((name, index) => (
+              <li key={`${name}-${index}`} className="text-xs leading-snug text-veda-800">
+                {name}
+              </li>
+            ))}
+          </ul>
+          <span
+            className="absolute -bottom-1.5 left-5 h-3 w-3 rotate-45 border-b border-r border-veda-100 bg-white/95"
+            aria-hidden
+          />
+        </div>
+      ) : null}
+      <span
+        className={`inline-flex max-w-full items-center gap-1 rounded-full bg-turmeric-100 px-2.5 py-0.5 text-xs text-turmeric-800 ${
+          more > 0 ? "cursor-pointer" : ""
+        }`}
+      >
+        <span className="min-w-0 truncate">{listed}</span>
+        {more > 0 ? <span className="shrink-0 font-medium">+{more} more</span> : null}
+      </span>
+    </div>
+  );
+}
+
 function FeaturedClinicCard({
   spa,
   eager,
@@ -88,13 +169,7 @@ function FeaturedClinicCard({
         <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-relaxed text-foreground/70">
           {spa.shortDescription}
         </p>
-        <div className="mt-3 min-h-[1.5rem]">
-          {spa.tags.length > 0 ? (
-            <span className="inline-block rounded-full bg-turmeric-100 px-2.5 py-0.5 text-xs text-turmeric-800">
-              {spa.tags.join(" · ")}
-            </span>
-          ) : null}
-        </div>
+        <FeaturedTagPill spa={spa} />
         <div className="mt-auto flex items-end justify-between gap-3 pt-4">
           {spa.priceFromMinor !== null ? (
             <p className="text-sm text-foreground/70">

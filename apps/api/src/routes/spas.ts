@@ -9,6 +9,7 @@ import {
   amenityIdsBySpa,
   categoryTagsBySpa,
   toSpaSummary,
+  treatmentNamesBySpa,
   type SpaSummaryRow,
 } from "../lib/spaQueries.js";
 import { publicPayloadHasNotes, withFeaturedFirst } from "../lib/featuredSpas.js";
@@ -271,12 +272,16 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
        ORDER BY fs.display_order ASC, s.id ASC`
     );
     const spaIds = rows.map((row) => row.id);
-    const amenities = await amenityIdsBySpa(spaIds);
-    const tags = await categoryTagsBySpa(spaIds);
+    const [amenities, tags, treatmentNames] = await Promise.all([
+      amenityIdsBySpa(spaIds),
+      categoryTagsBySpa(spaIds, Number.POSITIVE_INFINITY),
+      treatmentNamesBySpa(spaIds),
+    ]);
     const items: FeaturedSpaSummary[] = rows.map((row) => ({
       ...toSpaSummary(row, amenities.get(row.id) ?? []),
       featured: true,
       tags: tags.get(row.id) ?? [],
+      treatmentNames: treatmentNames.get(row.id) ?? [],
     }));
     const payload = { items };
     if (publicPayloadHasNotes(payload)) {

@@ -68,6 +68,25 @@ export async function categoryTagsBySpa(spaIds: number[], limit = 2): Promise<Ma
   return map;
 }
 
+export async function treatmentNamesBySpa(spaIds: number[]): Promise<Map<number, string[]>> {
+  const map = new Map<number, string[]>();
+  if (spaIds.length === 0) return map;
+  const rows = await query<{ spaId: number; name: string }>(
+    `SELECT t.spa_id AS spaId, t.name AS name
+     FROM treatments t
+     WHERE t.is_active = 1 AND t.spa_id IN (${spaIds.map(() => "?").join(",")})
+     ORDER BY t.spa_id, t.price_minor ASC, t.id ASC`,
+    spaIds
+  );
+  for (const row of rows) {
+    const spaId = Number(row.spaId);
+    const names = map.get(spaId) ?? [];
+    names.push(row.name);
+    map.set(spaId, names);
+  }
+  return map;
+}
+
 export async function amenityIdsBySpa(spaIds: number[]): Promise<Map<number, number[]>> {
   const map = new Map<number, number[]>();
   if (spaIds.length === 0) return map;

@@ -199,6 +199,7 @@ export interface SpaSummary {
 
 export interface FeaturedSpaSummary extends SpaSummary {
   tags: string[];
+  treatmentNames: string[];
 }
 
 export interface SpaDetail extends SpaSummary {
