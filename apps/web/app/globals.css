@@ -116,44 +116,38 @@ input:disabled {
 }
 
 /*
-  Featured cards: fit the full original photo in the left pane (no crop).
-  Leftover area is a blurred copy of the same image — not a flat green gap,
-  and not a zoomed intrinsic-pixel clip of the center.
+  Featured cards: one clinic per slide. Photo is a 3:2 frame with object-cover
+  (no stretch, no filler bands). Details match the photo height from tablet up.
 */
 .featured-clinic-card {
-  display: grid;
+  display: flex;
   width: 100%;
-  grid-template-columns: minmax(8.5rem, 42%) minmax(0, 1fr);
-  align-items: stretch;
-}
-
-@media (min-width: 640px) {
-  .featured-clinic-card {
-    grid-template-columns: minmax(10rem, 46%) minmax(0, 1fr);
-  }
+  min-width: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #fffff0;
 }
 
 .featured-clinic-card__media {
   position: relative;
   display: block;
-  align-self: stretch;
-  height: 100%;
-  min-height: 11rem;
+  width: 100%;
+  min-width: 0;
   overflow: hidden;
-  background-color: var(--color-veda-100, #dfece2);
+  background-color: #ebe6d6;
 }
 
-.featured-clinic-card__bleed,
+.featured-clinic-card__media::before {
+  content: "";
+  display: block;
+  padding-bottom: 66.6667%;
+}
+
 .featured-clinic-card__photo {
   position: absolute;
   inset: 0;
 }
 
-.featured-clinic-card__bleed {
-  overflow: hidden;
-}
-
-.featured-clinic-card__bleed img,
 .featured-clinic-card__photo img {
   position: absolute;
   inset: 0;
@@ -162,20 +156,27 @@ input:disabled {
   height: 100% !important;
   max-width: none !important;
   max-height: none !important;
-}
-
-.featured-clinic-card__bleed img {
   object-fit: cover;
   object-position: center;
-  filter: blur(18px);
-  transform: scale(1.12);
 }
 
-.featured-clinic-card__photo {
-  z-index: 1;
+.featured-clinic-card__body {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  border-top: 2px solid var(--color-turmeric-400, #e6b136);
 }
 
-.featured-clinic-card__photo img {
-  object-fit: contain;
-  object-position: center;
+@media (min-width: 768px) {
+  .featured-clinic-card {
+    display: grid;
+    grid-template-columns: minmax(0, 40%) minmax(0, 55%);
+    align-items: stretch;
+  }
+
+  .featured-clinic-card__body {
+    border-top: none;
+    border-left: 2px solid var(--color-turmeric-400, #e6b136);
+  }
 }

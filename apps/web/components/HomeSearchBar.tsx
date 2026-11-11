@@ -89,7 +89,7 @@ export function HomeSearchBar() {
   return (
     <div ref={wrapRef} className="relative mx-auto max-w-xl">
       <form
-        className="flex overflow-hidden rounded-full bg-white shadow-lg"
+        className="flex overflow-hidden rounded-full border-2 border-veda-800 bg-white shadow-sm"
         onSubmit={(e) => {
           e.preventDefault();
           if (active >= 0 && suggestions[active]) {

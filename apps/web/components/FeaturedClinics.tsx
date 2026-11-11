@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import type { FeaturedSpaSummary } from "@vedic/shared";
-import { money } from "@/lib/format";
+import { money, PAYMENT_MODE_LABELS } from "@/lib/format";
 import { RatingStars } from "./RatingStars";
 import { RemotePhoto } from "./RemotePhoto";
 import { WishlistButton } from "./WishlistButton";
@@ -13,6 +13,7 @@ const SLIDE_MS = 480;
 const SWIPE_PX = 48;
 const GAP_PX = 20;
 const EASE = "cubic-bezier(0.22, 0.8, 0.24, 1)";
+const VISIBLE_TREATMENTS = 3;
 
 function cityCountry(spa: FeaturedSpaSummary): string {
   return [spa.cityName, spa.countryName]
@@ -33,7 +34,7 @@ function PinIcon() {
 }
 
 function treatmentList(spa: FeaturedSpaSummary): string[] {
-  const source = spa.treatmentNames?.length ? spa.treatmentNames : spa.tags;
+  const source = spa.tags?.length ? spa.tags : spa.treatmentNames;
   const seen = new Set<string>();
   const names: string[] = [];
   for (const name of source) {
@@ -44,12 +45,13 @@ function treatmentList(spa: FeaturedSpaSummary): string[] {
   return names;
 }
 
-function FeaturedTagPill({ spa }: { spa: FeaturedSpaSummary }) {
+function FeaturedTreatments({ spa }: { spa: FeaturedSpaSummary }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const treatments = treatmentList(spa);
-  const listed = spa.tags[0] ?? treatments[0];
-  const more = Math.max(0, treatments.length - 1);
+  const visible = treatments.slice(0, VISIBLE_TREATMENTS);
+  const extra = treatments.slice(VISIBLE_TREATMENTS);
+  const more = extra.length;
 
   useEffect(() => {
     if (!open) return;
@@ -61,54 +63,68 @@ function FeaturedTagPill({ spa }: { spa: FeaturedSpaSummary }) {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open]);
 
-  if (!listed) return null;
+  if (visible.length === 0) return null;
 
   function hoverSupported() {
     return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   }
 
   return (
-    <div
-      ref={rootRef}
-      className="relative mt-3 min-h-[1.5rem]"
-      onMouseEnter={() => {
-        if (more > 0 && hoverSupported()) setOpen(true);
-      }}
-      onMouseLeave={() => {
-        if (hoverSupported()) setOpen(false);
-      }}
-      onClick={() => {
-        if (more === 0 || hoverSupported()) return;
-        setOpen((current) => !current);
-      }}
-    >
-      {open && more > 0 ? (
-        <div
-          role="tooltip"
-          className="absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-full max-w-[16.5rem] rounded-xl border border-veda-100 bg-white/95 p-3 shadow-lg backdrop-blur-sm"
+    <div className="mt-4 flex flex-wrap items-center gap-2">
+      {visible.map((name, index) => (
+        <span
+          key={`${name}-${index}`}
+          className="max-w-full truncate rounded-full bg-turmeric-100 px-2.5 py-1 text-xs text-turmeric-800"
         >
-          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-turmeric-700">Treatments</p>
-          <ul className="max-h-36 space-y-1.5 overflow-y-auto">
-            {treatments.map((name, index) => (
-              <li key={`${name}-${index}`} className="text-xs leading-snug text-veda-800">
-                {name}
-              </li>
-            ))}
-          </ul>
-          <span
-            className="absolute -bottom-1.5 left-5 h-3 w-3 rotate-45 border-b border-r border-veda-100 bg-white/95"
-            aria-hidden
-          />
+          {name}
+        </span>
+      ))}
+      {more > 0 ? (
+        <div
+          ref={rootRef}
+          className="relative"
+          onMouseEnter={() => {
+            if (hoverSupported()) setOpen(true);
+          }}
+          onMouseLeave={() => {
+            if (hoverSupported()) setOpen(false);
+          }}
+          onClick={() => {
+            if (hoverSupported()) return;
+            setOpen((current) => !current);
+          }}
+        >
+          {open ? (
+            <div
+              role="tooltip"
+              className="absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-[min(16.5rem,70vw)] rounded-xl border border-veda-100 bg-white/95 p-3 shadow-lg backdrop-blur-sm"
+            >
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-turmeric-700">
+                More treatments
+              </p>
+              <ul className="max-h-36 space-y-1.5 overflow-y-auto">
+                {extra.map((name, index) => (
+                  <li key={`${name}-${index}`} className="text-xs leading-snug text-veda-800">
+                    {name}
+                  </li>
+                ))}
+              </ul>
+              <span
+                className="absolute -bottom-1.5 left-5 h-3 w-3 rotate-45 border-b border-r border-veda-100 bg-white/95"
+                aria-hidden
+              />
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="inline-flex items-center rounded-full bg-turmeric-100 px-2.5 py-1 text-xs font-medium text-turmeric-800"
+            aria-expanded={open}
+            aria-label={`${more} more treatments`}
+          >
+            +{more}
+          </button>
         </div>
       ) : null}
-      <span
-        className={`inline-flex max-w-full items-center gap-1 rounded-full bg-turmeric-100 px-2.5 py-0.5 text-xs text-turmeric-800 ${
-          more > 0 ? "cursor-pointer" : ""
-        }`}
-      >
-        <span className="min-w-0 truncate">{listed}</span>
-        {more > 0 ? <span className="shrink-0 font-medium">+{more} more</span> : null}
-      </span>
     </div>
   );
 }
@@ -122,65 +138,58 @@ function FeaturedClinicCard({
 }) {
   const place = cityCountry(spa);
   return (
-    <article className="featured-clinic-card min-h-full w-full flex-1 overflow-hidden rounded-2xl border border-[#829186] bg-white shadow-sm">
+    <article className="featured-clinic-card w-full rounded-2xl border border-black/10 shadow-[0_8px_28px_rgba(31,42,36,0.08)]">
       <Link href={`/spas/${spa.slug}`} className="featured-clinic-card__media">
         {spa.coverPhotoUrl ? (
-          <>
-            <span className="featured-clinic-card__bleed" aria-hidden>
-              <RemotePhoto
-                src={spa.coverPhotoUrl}
-                alt=""
-                loading={eager ? "eager" : "lazy"}
-                fetchPriority={eager ? "high" : "low"}
-              />
-            </span>
-            <span className="featured-clinic-card__photo">
-              <RemotePhoto
-                src={spa.coverPhotoUrl}
-                alt={spa.name}
-                loading={eager ? "eager" : "lazy"}
-                fetchPriority={eager ? "high" : "low"}
-              />
-            </span>
-          </>
+          <span className="featured-clinic-card__photo">
+            <RemotePhoto
+              src={spa.coverPhotoUrl}
+              alt={spa.name}
+              loading={eager ? "eager" : "lazy"}
+              fetchPriority={eager ? "high" : "low"}
+            />
+          </span>
         ) : null}
-      </Link>
-      <div className="relative flex min-w-0 flex-1 flex-col p-4 sm:p-5">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-turmeric-600">
+        <span className="absolute left-3 top-3 z-10 rounded-full bg-turmeric-400 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-veda-950">
           Featured
         </span>
-        <WishlistButton spaId={spa.id} className="absolute right-3 top-3" />
-        <h3 className="mt-1.5 line-clamp-2 min-h-[2.75rem] pr-10 font-semibold leading-snug text-veda-900">
+      </Link>
+      <div className="featured-clinic-card__body relative p-4 sm:p-5 lg:p-6">
+        <WishlistButton spaId={spa.id} className="absolute right-3 top-3 sm:right-4 sm:top-4" />
+        <h3 className="pr-12 text-xl font-semibold leading-snug text-veda-900 sm:text-2xl">
           <Link href={`/spas/${spa.slug}`} className="hover:underline">
             {spa.name}
           </Link>
         </h3>
         {place ? (
-          <p className="mt-1 flex min-h-[1.25rem] items-center gap-1 text-sm text-foreground/60">
+          <p className="mt-2 flex items-center gap-1 text-sm text-foreground/60">
             <PinIcon />
             <span className="truncate">{place}</span>
           </p>
-        ) : (
-          <p className="mt-1 min-h-[1.25rem]" aria-hidden />
-        )}
-        <div className="mt-1 min-h-[1.25rem]">
+        ) : null}
+        <div className="mt-1.5">
           <RatingStars rating={spa.ratingAvg} count={spa.ratingCount} />
         </div>
-        <p className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-relaxed text-foreground/70">
-          {spa.shortDescription}
-        </p>
-        <FeaturedTagPill spa={spa} />
-        <div className="mt-auto flex items-end justify-between gap-3 pt-4">
-          {spa.priceFromMinor !== null ? (
-            <p className="text-sm text-foreground/70">
-              from <span className="font-semibold text-veda-900">{money(spa.priceFromMinor, spa.currencyCode)}</span>
-            </p>
-          ) : (
-            <span />
-          )}
+        {spa.shortDescription ? (
+          <p className="mt-3 line-clamp-3 text-sm leading-relaxed text-foreground/70">
+            {spa.shortDescription}
+          </p>
+        ) : null}
+        <FeaturedTreatments spa={spa} />
+        <div className="mt-auto flex flex-col gap-3 pt-5 sm:flex-row sm:flex-wrap sm:items-center">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {spa.priceFromMinor !== null ? (
+              <p className="text-sm text-foreground/70">
+                from <span className="font-semibold text-veda-900">{money(spa.priceFromMinor, spa.currencyCode)}</span>
+              </p>
+            ) : null}
+            <span className="rounded-full bg-veda-100 px-2.5 py-1 text-xs text-veda-700">
+              {PAYMENT_MODE_LABELS[spa.paymentModeCode]}
+            </span>
+          </div>
           <Link
             href={`/spas/${spa.slug}`}
-            className="rounded-full border border-veda-300 px-3.5 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+            className="w-fit rounded-full border border-veda-800 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50 sm:ml-auto"
           >
             View clinic
           </Link>
@@ -202,7 +211,6 @@ export function FeaturedClinics({
   const trackRef = useRef<HTMLDivElement>(null);
   const shiftRef = useRef(0);
   const pointer = useRef<{ x: number; id: number } | null>(null);
-  const [desktop, setDesktop] = useState(false);
   const [hovering, setHovering] = useState(false);
   const [reduceMotion, setReduceMotion] = useState(false);
   const [tabHidden, setTabHidden] = useState(false);
@@ -213,8 +221,8 @@ export function FeaturedClinics({
   const [dragging, setDragging] = useState(false);
 
   const count = spas.length;
-  const visibleCount = desktop ? Math.min(2, count) : 1;
-  const canSlide = count > visibleCount;
+  const visibleCount = 1;
+  const canSlide = count > 1;
   const trackSpas = canSlide ? [...spas, ...spas, ...spas] : spas;
   const step = cardWidth + GAP_PX;
   const logicalIndex = count === 0 ? 0 : ((shift % count) + count) % count;
@@ -245,18 +253,11 @@ export function FeaturedClinics({
   }, [shift]);
 
   useEffect(() => {
-    const widthMq = window.matchMedia("(min-width: 1024px)");
     const motionMq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const applyWidth = () => setDesktop(widthMq.matches);
     const applyMotion = () => setReduceMotion(motionMq.matches);
-    applyWidth();
     applyMotion();
-    widthMq.addEventListener("change", applyWidth);
     motionMq.addEventListener("change", applyMotion);
-    return () => {
-      widthMq.removeEventListener("change", applyWidth);
-      motionMq.removeEventListener("change", applyMotion);
-    };
+    return () => motionMq.removeEventListener("change", applyMotion);
   }, []);
 
   useEffect(() => {
@@ -273,16 +274,13 @@ export function FeaturedClinics({
     if (!el) return;
     const viewport = el;
     function measure() {
-      const width = viewport.clientWidth;
-      const nextVisible = desktop ? Math.min(2, count) : 1;
-      const nextWidth = nextVisible > 1 ? (width - GAP_PX) / nextVisible : width;
-      setCardWidth(nextWidth);
+      setCardWidth(Math.floor(viewport.clientWidth));
     }
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(viewport);
     return () => observer.disconnect();
-  }, [desktop, count]);
+  }, []);
 
   useEffect(() => {
     setAnimate(false);
@@ -290,7 +288,7 @@ export function FeaturedClinics({
     const next = canSlide ? count : 0;
     shiftRef.current = next;
     setShift(next);
-  }, [canSlide, count, visibleCount]);
+  }, [canSlide, count]);
 
   useEffect(() => {
     if (!canSlide || hovering || reduceMotion || tabHidden || dragging) return;
@@ -311,13 +309,8 @@ export function FeaturedClinics({
 
   if (spas.length === 0) return null;
 
-  const arrowClass =
-    spas.length > 2
-      ? "hidden sm:grid"
-      : spas.length > 1
-        ? "hidden sm:grid lg:hidden"
-        : "hidden";
-  const dotsClass = spas.length > 2 ? "" : spas.length > 1 ? "lg:hidden" : "hidden";
+  const arrowClass = spas.length > 1 ? "hidden sm:grid" : "hidden";
+  const dotsClass = spas.length > 1 ? "" : "hidden";
 
   function onPointerDown(e: React.PointerEvent) {
     if (!canSlide) return;
@@ -346,7 +339,7 @@ export function FeaturedClinics({
   const offset = cardWidth > 0 ? -(shift * step) + drag : 0;
 
   return (
-    <section className={`bg-background px-4 py-8 lg:py-10 ${className}`.trim()} aria-labelledby={headingId}>
+    <section className={`bg-white px-4 py-8 lg:py-10 ${className}`.trim()} aria-labelledby={headingId}>
       <div
         className="relative mx-auto max-w-6xl"
         aria-roledescription="carousel"
@@ -369,6 +362,7 @@ export function FeaturedClinics({
           }
         }}
       >
+        <div className="mb-8 h-px bg-neutral-200" aria-hidden />
         <div className="flex items-center gap-3">
           <h2 id={headingId} className="text-xl font-semibold text-veda-900 sm:text-2xl">
             Featured Ayurvedic Clinics
@@ -385,7 +379,7 @@ export function FeaturedClinics({
         <div className="relative mt-6 sm:px-12">
           <button
             type="button"
-            aria-label="Previous featured clinics"
+            aria-label="Previous featured clinic"
             className={`absolute left-0 top-1/2 z-10 h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-veda-200 bg-white text-lg text-foreground/55 shadow-sm hover:bg-veda-50 ${arrowClass}`}
             onClick={() => goBy(-1)}
           >
@@ -393,7 +387,7 @@ export function FeaturedClinics({
           </button>
           <button
             type="button"
-            aria-label="Next featured clinics"
+            aria-label="Next featured clinic"
             className={`absolute right-0 top-1/2 z-10 h-10 w-10 -translate-y-1/2 place-items-center rounded-full border border-veda-200 bg-white text-lg text-foreground/55 shadow-sm hover:bg-veda-50 ${arrowClass}`}
             onClick={() => goBy(1)}
           >
@@ -403,7 +397,7 @@ export function FeaturedClinics({
           <div
             ref={viewportRef}
             className="overflow-hidden"
-            style={{ minHeight: "16.5rem", opacity: cardWidth ? 1 : 0 }}
+            style={{ opacity: cardWidth ? 1 : 0 }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -433,8 +427,12 @@ export function FeaturedClinics({
                 return (
                   <div
                     key={`${spa.id}-${i}`}
-                    className="flex shrink-0 self-stretch"
-                    style={{ width: cardWidth || undefined, flexBasis: cardWidth || undefined }}
+                    className="flex min-w-0 shrink-0 self-stretch"
+                    style={{
+                      width: cardWidth || undefined,
+                      flexBasis: cardWidth || undefined,
+                      maxWidth: cardWidth || undefined,
+                    }}
                     aria-hidden={!visible}
                   >
                     <FeaturedClinicCard spa={spa} eager={visible} />
