@@ -339,29 +339,13 @@ export function FeaturedClinics({
   const offset = cardWidth > 0 ? -(shift * step) + drag : 0;
 
   return (
-    <section className={`bg-white px-4 pb-0 pt-4 lg:pt-5 ${className}`.trim()} aria-labelledby={headingId}>
-      <div
-        className="relative mx-auto max-w-6xl"
-        aria-roledescription="carousel"
-        aria-labelledby={headingId}
-        tabIndex={canSlide ? 0 : undefined}
-        onMouseEnter={() => setHovering(true)}
-        onMouseLeave={() => setHovering(false)}
-        onFocus={() => setHovering(true)}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node)) setHovering(false);
-        }}
-        onKeyDown={(e) => {
-          if (!canSlide) return;
-          if (e.key === "ArrowRight") {
-            e.preventDefault();
-            goBy(1);
-          } else if (e.key === "ArrowLeft") {
-            e.preventDefault();
-            goBy(-1);
-          }
-        }}
-      >
+    <section
+      className={`bg-white pb-0 pt-4 lg:pt-5 ${className}`.trim()}
+      aria-labelledby={headingId}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+    >
+      <div className="mx-auto max-w-6xl px-4">
         <div className="mb-8 h-px bg-neutral-200" aria-hidden />
         <div className="flex items-center gap-3">
           <h2 id={headingId} className="text-xl font-semibold text-veda-900 sm:text-2xl">
@@ -375,7 +359,29 @@ export function FeaturedClinics({
         <p className="mt-1 text-sm text-foreground/65 sm:text-base">
           Handpicked destinations for authentic Ayurvedic care
         </p>
+      </div>
 
+      <div className="px-4">
+        <div
+          className="relative mx-auto max-w-6xl"
+          aria-roledescription="carousel"
+          aria-labelledby={headingId}
+          tabIndex={canSlide ? 0 : undefined}
+          onFocus={() => setHovering(true)}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node)) setHovering(false);
+          }}
+          onKeyDown={(e) => {
+            if (!canSlide) return;
+            if (e.key === "ArrowRight") {
+              e.preventDefault();
+              goBy(1);
+            } else if (e.key === "ArrowLeft") {
+              e.preventDefault();
+              goBy(-1);
+            }
+          }}
+        >
         <div className="relative mt-6 sm:px-12">
           <button
             type="button"
@@ -461,6 +467,9 @@ export function FeaturedClinics({
             );
           })}
         </div>
+        </div>
+      </div>
+      <div className="mx-auto max-w-6xl px-4">
         <div className="mt-8 h-px bg-neutral-200" aria-hidden />
       </div>
     </section>
