@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, type ReactNode } from "react";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -26,24 +27,21 @@ export function ConfirmDialog({
   const titleId = useId();
   const messageId = useId();
 
+  useBodyScrollLock(open);
+
   useEffect(() => {
     if (!open) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && !busy) onCancel();
     }
     document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [open, busy, onCancel]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation">
+    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4" role="presentation">
       <button
         type="button"
         aria-label="Dismiss"

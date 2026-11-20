@@ -537,6 +537,8 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
     "UPDATE payment_modes SET requires_online_payment = 1 WHERE code IN ('full_prepay', 'deposit', 'booking_fee')"
   );
   await conn.query("UPDATE payment_modes SET requires_online_payment = 0 WHERE code = 'pay_at_spa'");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS amenities_other TEXT NULL");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS treatment_names TEXT NULL");
   if (addingOnlinePayCol) {
     await conn.query(
       `UPDATE spas

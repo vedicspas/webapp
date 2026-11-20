@@ -6,29 +6,19 @@ import { staticCache } from "../cache/staticCache.js";
 import { requireAuth } from "../plugins/auth.js";
 import { stripe } from "../lib/stripe.js";
 import { config } from "../config.js";
-import { deleteLocalPhoto, publicPhotoUrl, saveSpaPhotoFile } from "../lib/uploads.js";
+import { deleteLocalPhoto, publicPhotoUrl } from "../lib/uploads.js";
 import { toBooking } from "./bookings.js";
 import { toReview, photosByReview } from "./reviews.js";
 import { issueSessionForUserId } from "./auth.js";
 import { ensureVendorAccount } from "../lib/vendorAccount.js";
-import { amenityIdsBySpa, replaceSpaAmenities } from "../lib/spaQueries.js";
+import { amenityIdsBySpa, replaceSpaAmenities, replaceSpaOpenHours, saveSpaNameLists } from "../lib/spaQueries.js";
+import { appendUploadedSpaPhoto, multipartField } from "../lib/spaPhotos.js";
+import { decodeNameList } from "../lib/nameList.js";
 import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { allocateClinicCode, parseBookingRefInput } from "../lib/bookingRefs.js";
 import { loadSpaOwner, notifyClinicSubmitted, notifySpaOwnerForPublish, notifyWelcomeVendor } from "../lib/notify.js";
 import { addIsoDays, loadProgramRuns, maskFromWeekdays, padTime, weekdaysFromMask } from "../lib/treatmentSchedule.js";
 import { loadTreatmentConditions, replaceTreatmentConditions } from "../lib/treatmentConditions.js";
-
-function multipartField(file: { fields?: Record<string, unknown> }, names: string[]): string {
-  for (const name of names) {
-    const raw = file.fields?.[name];
-    if (!raw) continue;
-    const one = Array.isArray(raw) ? raw[0] : raw;
-    if (one && typeof one === "object" && "value" in one) {
-      return String((one as { value?: unknown }).value ?? "");
-    }
-  }
-  return "";
-}
 
 interface VendorRow {
   id: number;
@@ -135,6 +125,7 @@ const spaBodySchema = z.object({
   accommodationTypeIds: z.array(z.number().int().positive()).optional().default([]),
   accommodationOther: z.string().max(200).nullable().optional().default(null),
   amenityIds: z.array(z.number().int().positive()).optional().default([]),
+  amenitiesOther: z.union([z.string(), z.array(z.string())]).optional().default([]),
   accessibility: z.string().max(2000).nullable().optional().default(null),
   familyAccommodation: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
 });
@@ -384,6 +375,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     );
     await saveSpaStay(result.insertId, body);
     await replaceSpaAmenities(result.insertId, body.amenityIds);
+    await saveSpaNameLists(result.insertId, { amenitiesOther: body.amenitiesOther });
     const owner = await loadSpaOwner(result.insertId);
     if (owner) {
       if (body.isPublished) {
@@ -439,6 +431,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     );
     await saveSpaStay(spaId, body);
     await replaceSpaAmenities(spaId, body.amenityIds);
+    await saveSpaNameLists(spaId, { amenitiesOther: body.amenitiesOther });
     if (body.isPublished && !before?.is_published) {
       await notifySpaOwnerForPublish(spaId, true);
     }
@@ -459,7 +452,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
          online_consultation_url AS onlineConsultationUrl,
          shopify_collection_handle AS shopifyCollectionHandle,
          payment_mode_id AS paymentModeId, deposit_bps AS depositBps,
-         booking_fee_minor AS bookingFeeMinor, currency_id AS currencyId, is_published AS isPublished
+         booking_fee_minor AS bookingFeeMinor, currency_id AS currencyId, is_published AS isPublished,
+         amenities_other AS amenitiesOther, treatment_names AS listedTreatmentNames
        FROM spas WHERE id = ? AND vendor_id = ?`,
       [spaId, vendor.id]
     );
@@ -534,6 +528,10 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         sortOrder: p.sortOrder,
       })),
       amenityIds: amenities.get(spaId) ?? [],
+      amenitiesOther: decodeNameList(spa.amenitiesOther == null ? null : String(spa.amenitiesOther)),
+      listedTreatmentNames: decodeNameList(
+        spa.listedTreatmentNames == null ? null : String(spa.listedTreatmentNames)
+      ),
       ...stay,
     };
   });
@@ -554,13 +552,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       )
       .parse(request.body);
 
-    await execute("DELETE FROM spa_open_hours WHERE spa_id = ?", [spaId]);
-    for (const h of body) {
-      await execute(
-        "INSERT INTO spa_open_hours (spa_id, weekday, open_time, close_time) VALUES (?,?,?,?)",
-        [spaId, h.weekday, `${h.openTime}:00`, `${h.closeTime}:00`]
-      );
-    }
+    await replaceSpaOpenHours(spaId, body);
     return { ok: true };
   });
 
@@ -570,11 +562,6 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
     const spaId = Number((request.params as { id: string }).id);
     if (!(await assertSpaOwnership(spaId, vendor.id, reply))) return;
 
-    const max = await queryOne<{ m: number }>(
-      "SELECT COALESCE(MAX(sort_order), -1) AS m FROM spa_photos WHERE spa_id = ?",
-      [spaId]
-    );
-    const nextOrder = Number(max?.m ?? -1) + 1;
     const contentType = String(request.headers["content-type"] ?? "");
 
     if (contentType.includes("multipart/form-data")) {
@@ -583,17 +570,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       const buffer = await file.toBuffer();
       const title = multipartField(file, ["title", "alt"]).slice(0, 200);
       try {
-        const saved = await saveSpaPhotoFile(spaId, buffer, file.mimetype);
-        const result = await execute(
-          "INSERT INTO spa_photos (spa_id, url, alt, sort_order) VALUES (?,?,?,?)",
-          [spaId, saved.relativeUrl, title, nextOrder]
-        );
-        return reply.code(201).send({
-          id: result.insertId,
-          url: saved.absoluteUrl,
-          title,
-          alt: title,
-        });
+        const saved = await appendUploadedSpaPhoto(spaId, buffer, file.mimetype, title);
+        return reply.code(201).send(saved);
       } catch (err) {
         const status = (err as { statusCode?: number }).statusCode ?? 400;
         return reply.code(status).send({ error: (err as Error).message });
@@ -608,9 +586,13 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       })
       .parse(request.body);
     const title = (body.title ?? body.alt ?? "").slice(0, 200);
+    const max = await queryOne<{ m: number }>(
+      "SELECT COALESCE(MAX(sort_order), -1) AS m FROM spa_photos WHERE spa_id = ?",
+      [spaId]
+    );
     const result = await execute(
       "INSERT INTO spa_photos (spa_id, url, alt, sort_order) VALUES (?,?,?,?)",
-      [spaId, body.url, title, nextOrder]
+      [spaId, body.url, title, Number(max?.m ?? -1) + 1]
     );
     return reply.code(201).send({ id: result.insertId, url: body.url, title, alt: title });
   });

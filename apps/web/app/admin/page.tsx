@@ -13,6 +13,8 @@ import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { InquiryTable, type AdminInquiry } from "@/components/admin/InquiryTable";
 import { DateField } from "@/components/DateField";
 import { FeaturedClinicModal, type FeaturedClinicTarget } from "@/components/admin/FeaturedClinicModal";
+import { AdminClinicRow, VENDOR_STATUS_BADGE, type AdminSpa } from "@/components/admin/AdminClinicRow";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 interface Stats {
   users: number;
@@ -42,21 +44,6 @@ interface AdminVendor {
   publishedCount: number;
 }
 
-interface AdminSpa {
-  id: number;
-  slug: string;
-  name: string;
-  clinicCode: string;
-  cityName: string;
-  isPublished: boolean;
-  origin: "vendor" | "admin" | "imported";
-  vendorName: string | null;
-  vendorStatus: VendorStatus | null;
-  isUnclaimed: boolean;
-  pendingClaims: number;
-  inquiryCount: number;
-  featuredOrder: number | null;
-}
 
 interface AdminReview {
   id: number;
@@ -125,11 +112,6 @@ const LISTING_STATUS_FILTERS: Array<{ id: ListingStatus; label: string }> = [
   { id: "waiting", label: "Waiting for approval" },
 ];
 
-const STATUS_BADGE: Record<VendorStatus, string> = {
-  pending: "bg-amber-100 text-amber-800",
-  approved: "bg-veda-100 text-veda-800",
-  suspended: "bg-red-100 text-red-700",
-};
 
 const input = "mt-1 w-full rounded-lg border border-veda-200 px-3 py-2 text-sm";
 const label = "block text-sm font-medium";
@@ -188,6 +170,7 @@ export default function AdminPage() {
 
   const [clinicName, setClinicName] = useState("");
   const [clinicId, setClinicId] = useState("");
+  const [vendorFilterName, setVendorFilterName] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
@@ -196,6 +179,7 @@ export default function AdminPage() {
   const [appliedClinic, setAppliedClinic] = useState({
     clinicName: "",
     clinicId: "",
+    vendorName: "",
     from: "",
     to: "",
     categoryIds: [] as number[],
@@ -217,6 +201,11 @@ export default function AdminPage() {
   const [inquiryPopup, setInquiryPopup] = useState<{ spaId: number; spaName: string } | null>(null);
   const [inquiryItems, setInquiryItems] = useState<AdminInquiry[] | null>(null);
   const [inquiryError, setInquiryError] = useState<string | null>(null);
+  const [vendorClinics, setVendorClinics] = useState<AdminVendor | null>(null);
+  const [vendorClinicsPage, setVendorClinicsPage] = useState(1);
+  const [vendorClinicsPageSize, setVendorClinicsPageSize] = useState(10);
+  const [vendorClinicsData, setVendorClinicsData] = useState<Paged<AdminSpa> | null>(null);
+  const [vendorClinicsError, setVendorClinicsError] = useState<string | null>(null);
 
   const isAdmin = session?.appUser?.role === "admin";
 
@@ -224,6 +213,7 @@ export default function AdminPage() {
     const q = new URLSearchParams();
     if (appliedClinic.clinicName.trim()) q.set("clinicName", appliedClinic.clinicName.trim());
     if (appliedClinic.clinicId.trim()) q.set("clinicId", appliedClinic.clinicId.trim());
+    if (appliedClinic.vendorName.trim()) q.set("vendorName", appliedClinic.vendorName.trim());
     if (appliedClinic.from) q.set("from", appliedClinic.from);
     if (appliedClinic.to) q.set("to", appliedClinic.to);
     if (appliedClinic.categoryIds.length) q.set("categoryIds", appliedClinic.categoryIds.join(","));
@@ -294,6 +284,28 @@ export default function AdminPage() {
     if (token && isAdmin) loadTab();
   }, [token, isAdmin, loadTab]);
 
+  useBodyScrollLock(Boolean(vendorClinics) || Boolean(inquiryPopup));
+
+  useEffect(() => {
+    if (!vendorClinics) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      if (inquiryPopup || featuredSpa) return;
+      setVendorClinics(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [vendorClinics, inquiryPopup, featuredSpa]);
+
+  useEffect(() => {
+    if (!inquiryPopup) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setInquiryPopup(null);
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [inquiryPopup]);
+
   function switchTab(next: Tab) {
     setTab(next);
     setPage(1);
@@ -311,12 +323,39 @@ export default function AdminPage() {
     }
   }
 
+  const loadVendorClinics = useCallback(
+    async (vendor: AdminVendor, nextPage = 1, nextPageSize?: number) => {
+      const pageSizeToUse = nextPageSize ?? vendorClinicsPageSize;
+      setVendorClinicsError(null);
+      try {
+        const data = await call<Paged<AdminSpa>>(
+          `/admin/spas?vendorId=${vendor.id}&page=${nextPage}&pageSize=${pageSizeToUse}`
+        );
+        setVendorClinicsData(data);
+        setVendorClinicsPage(nextPage);
+        setVendorClinicsPageSize(pageSizeToUse);
+      } catch (err) {
+        setVendorClinicsError(err instanceof Error ? err.message : "Could not load clinics");
+        setVendorClinicsData({ items: [], page: nextPage, pageSize: pageSizeToUse, total: 0 });
+      }
+    },
+    [call, vendorClinicsPageSize]
+  );
+
+  async function openVendorClinics(vendor: AdminVendor) {
+    setVendorClinics(vendor);
+    setVendorClinicsData(null);
+    setVendorClinicsPage(1);
+    await loadVendorClinics(vendor, 1);
+  }
+
   async function setSpaPublished(id: number, isPublished: boolean) {
     try {
       await call(`/admin/spas/${id}`, { method: "PATCH", body: { isPublished } });
       toast(isPublished ? "Listing published." : "Listing unpublished.");
       loadStats();
       loadTab();
+      if (vendorClinics) await loadVendorClinics(vendorClinics, vendorClinicsPage);
     } catch (err) {
       toast(err instanceof Error ? err.message : "Update failed", "error");
     }
@@ -407,7 +446,16 @@ export default function AdminPage() {
       onSubmit={(e) => {
         e.preventDefault();
         setPage(1);
-        setAppliedClinic({ clinicName, clinicId, from, to, categoryIds, featuredOnly, listingStatus });
+        setAppliedClinic({
+          clinicName,
+          clinicId,
+          vendorName: vendorFilterName,
+          from,
+          to,
+          categoryIds,
+          featuredOnly,
+          listingStatus,
+        });
       }}
     >
       <div className="grid gap-3 sm:grid-cols-2">
@@ -424,6 +472,17 @@ export default function AdminPage() {
             placeholder="AA0842"
           />
         </label>
+        {tab === "spas" ? (
+          <label className={label}>
+            Vendor name
+            <input
+              className={input}
+              value={vendorFilterName}
+              onChange={(e) => setVendorFilterName(e.target.value)}
+              placeholder="Business name"
+            />
+          </label>
+        ) : null}
         <label className={label}>
           From date
           <DateField value={from} allowEmpty onChange={setFrom} />
@@ -481,6 +540,7 @@ export default function AdminPage() {
           onClick={() => {
             setClinicName("");
             setClinicId("");
+            setVendorFilterName("");
             setFrom("");
             setTo("");
             setCategoryIds([]);
@@ -489,6 +549,7 @@ export default function AdminPage() {
             setAppliedClinic({
               clinicName: "",
               clinicId: "",
+              vendorName: "",
               from: "",
               to: "",
               categoryIds: [],
@@ -634,7 +695,7 @@ export default function AdminPage() {
                       {v.stripeOnboarded ? " · Stripe connected" : ""}
                     </p>
                   </div>
-                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_BADGE[v.status]}`}>
+                  <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${VENDOR_STATUS_BADGE[v.status]}`}>
                     {v.status}
                   </span>
                 </div>
@@ -655,6 +716,13 @@ export default function AdminPage() {
                       Suspend {v.publishedCount > 0 ? "(unpublishes listings)" : ""}
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void openVendorClinics(v)}
+                    className="rounded-full border border-veda-300 px-4 py-1.5 text-veda-800 hover:bg-veda-50"
+                  >
+                    View clinics ({v.spaCount})
+                  </button>
                 </div>
               </div>
             ))}
@@ -685,108 +753,13 @@ export default function AdminPage() {
           {clinicFilters}
           <div className="mt-4 space-y-3">
             {(spas?.items ?? []).map((s) => (
-              <div
+              <AdminClinicRow
                 key={s.id}
-                className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-veda-100 bg-white p-4"
-              >
-                <div>
-                  <Link href={`/spas/${s.slug}`} className="font-medium text-veda-900 hover:underline">
-                    {s.name}
-                  </Link>
-                  <p className="text-sm text-foreground/60">
-                    Clinic ID {s.clinicCode} &middot; {s.cityName}
-                    {s.isUnclaimed ? (
-                      <>
-                        {" "}
-                        &middot;{" "}
-                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                          Unclaimed
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        {" "}
-                        &middot; {s.vendorName}{" "}
-                        {s.vendorStatus ? (
-                          <span className={`ml-1 rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[s.vendorStatus]}`}>
-                            {s.vendorStatus}
-                          </span>
-                        ) : null}
-                      </>
-                    )}
-                    {s.pendingClaims > 0 ? (
-                      <>
-                        {" "}
-                        &middot;{" "}
-                        <Link href={`/admin/claims?spaId=${s.id}`} className="text-veda-700 underline">
-                          {s.pendingClaims} claim{s.pendingClaims === 1 ? "" : "s"}
-                        </Link>
-                      </>
-                    ) : null}
-                    {" "}
-                    &middot;{" "}
-                    <button
-                      type="button"
-                      className="text-veda-700 underline"
-                      onClick={() => void openInquiries(s)}
-                    >
-                      Inquiries ({s.inquiryCount})
-                    </button>
-                    {s.featuredOrder != null ? (
-                      <>
-                        {" "}
-                        &middot;{" "}
-                        <span className="rounded-full bg-turmeric-100 px-2 py-0.5 text-xs font-medium text-turmeric-800">
-                          Featured #{s.featuredOrder}
-                        </span>
-                      </>
-                    ) : null}
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {s.featuredOrder != null ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFeaturedSpa({
-                          id: s.id,
-                          name: s.name,
-                          isPublished: s.isPublished,
-                          featuredOrder: s.featuredOrder,
-                        })
-                      }
-                      className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
-                    >
-                      Manage featured
-                    </button>
-                  ) : s.isPublished ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setFeaturedSpa({
-                          id: s.id,
-                          name: s.name,
-                          isPublished: s.isPublished,
-                          featuredOrder: null,
-                        })
-                      }
-                      className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
-                    >
-                      Make featured
-                    </button>
-                  ) : null}
-                  <button
-                    onClick={() => setSpaPublished(s.id, !s.isPublished)}
-                    className={`rounded-full px-4 py-1.5 text-sm ${
-                      s.isPublished
-                        ? "border border-red-300 text-red-700 hover:bg-red-50"
-                        : "bg-veda-700 text-white hover:bg-veda-600"
-                    }`}
-                  >
-                    {s.isPublished ? "Unpublish" : "Publish"}
-                  </button>
-                </div>
-              </div>
+                spa={s}
+                onInquiries={(spa) => void openInquiries(spa)}
+                onFeatured={setFeaturedSpa}
+                onPublish={(id, isPublished) => void setSpaPublished(id, isPublished)}
+              />
             ))}
           </div>
           <PaginationBar
@@ -1021,11 +994,78 @@ export default function AdminPage() {
         onClose={() => setFeaturedSpa(null)}
         onSaved={() => {
           loadTab();
+          if (vendorClinics) void loadVendorClinics(vendorClinics, vendorClinicsPage);
         }}
       />
 
+      {vendorClinics ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" role="presentation">
+          <button
+            type="button"
+            aria-label="Dismiss clinics"
+            className="absolute inset-0 bg-veda-950/55"
+            onClick={() => {
+              if (inquiryPopup || featuredSpa) return;
+              setVendorClinics(null);
+            }}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Clinics for ${vendorClinics.businessName}`}
+            className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-3xl bg-white p-6 shadow-xl"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-veda-900">{vendorClinics.businessName}</h2>
+                <p className="text-sm text-foreground/60">
+                  Clinics ({vendorClinicsData?.total ?? "…"})
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close clinics"
+                className="grid h-9 w-9 place-items-center rounded-full text-2xl leading-none text-foreground/45 hover:bg-veda-50"
+                onClick={() => setVendorClinics(null)}
+              >
+                &times;
+              </button>
+            </div>
+            {vendorClinicsError ? <p className="mt-3 text-sm text-red-600">{vendorClinicsError}</p> : null}
+            <div className="mt-4 space-y-3">
+              {vendorClinicsData ? (
+                vendorClinicsData.items.length > 0 ? (
+                  vendorClinicsData.items.map((s) => (
+                    <AdminClinicRow
+                      key={s.id}
+                      spa={s}
+                      onInquiries={(spa) => void openInquiries(spa)}
+                      onFeatured={setFeaturedSpa}
+                      onPublish={(id, isPublished) => void setSpaPublished(id, isPublished)}
+                    />
+                  ))
+                ) : (
+                  <p className="text-sm text-foreground/50">This vendor has no clinics yet.</p>
+                )
+              ) : (
+                <p className="text-sm text-foreground/50">Loading…</p>
+              )}
+            </div>
+            {vendorClinicsData ? (
+              <PaginationBar
+                page={vendorClinicsData.page}
+                pageSize={vendorClinicsData.pageSize}
+                total={vendorClinicsData.total}
+                onPage={(next) => void loadVendorClinics(vendorClinics, next)}
+                onPageSize={(n) => void loadVendorClinics(vendorClinics, 1, n)}
+              />
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {inquiryPopup ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="presentation">
           <button
             type="button"
             aria-label="Dismiss"

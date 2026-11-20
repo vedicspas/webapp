@@ -9,6 +9,7 @@ import { RemotePhoto } from "@/components/RemotePhoto";
 import { DollarInput, PostfixInput } from "@/components/AffixedInput";
 import { ExpandingTextarea } from "@/components/ExpandingTextarea";
 import { TagInput } from "@/components/TagInput";
+import { AmenitiesPicker } from "@/components/AmenitiesPicker";
 import { toast } from "@/stores/toastStore";
 import { easeScrollTo } from "@/lib/smoothScroll";
 import { DateField } from "@/components/DateField";
@@ -140,6 +141,7 @@ interface SpaForm {
   accommodationTypeIds: number[];
   accommodationOther: string;
   amenityIds: number[];
+  amenitiesOther: string;
   accessibility: string;
   familyAccommodation: OnRequestFlag | null;
 }
@@ -184,6 +186,7 @@ const EMPTY: SpaForm = {
   accommodationTypeIds: [],
   accommodationOther: "",
   amenityIds: [],
+  amenitiesOther: "",
   accessibility: "",
   familyAccommodation: null,
 };
@@ -225,6 +228,8 @@ export default function VendorSpaEditPage() {
   const [stripeOnboarded, setStripeOnboarded] = useState(false);
   const [stripeConfigured, setStripeConfigured] = useState(false);
   const [payAlert, setPayAlert] = useState<"platform" | "vendor" | null>(null);
+  const [amenitiesOtherOn, setAmenitiesOtherOn] = useState(false);
+  const [listedTreatmentNames, setListedTreatmentNames] = useState<string[]>([]);
 
   const editSections = useMemo(
     () => [
@@ -273,6 +278,8 @@ export default function VendorSpaEditPage() {
       accommodationTypes?: { id: number; name: string }[];
       accommodationOther?: string | null;
       amenityIds?: number[];
+      amenitiesOther?: string[];
+      listedTreatmentNames?: string[];
       airportPickup?: OnRequestFlag | null;
       familyAccommodation?: OnRequestFlag | null;
       accessibility?: string | null;
@@ -312,11 +319,14 @@ export default function VendorSpaEditPage() {
       accommodationTypeIds: (data.accommodationTypes ?? []).map((t) => t.id),
       accommodationOther: data.accommodationOther ?? "",
       amenityIds: data.amenityIds ?? [],
+      amenitiesOther: (data.amenitiesOther ?? []).join(", "),
       accessibility: data.accessibility ?? "",
       familyAccommodation: data.familyAccommodation ?? null,
       offersOnlineConsultation: Boolean(data.offersOnlineConsultation),
       onlineConsultationUrl: data.onlineConsultationUrl ?? null,
     });
+    setAmenitiesOtherOn((data.amenitiesOther ?? []).length > 0);
+    setListedTreatmentNames(data.listedTreatmentNames ?? []);
     setListingSlug(data.slug ?? null);
     setClinicCode(data.clinicCode ?? null);
     setTreatments(
@@ -443,6 +453,7 @@ export default function VendorSpaEditPage() {
         accommodationTypeIds: form.accommodationTypeIds,
         accommodationOther: form.accommodationOther.trim() || null,
         amenityIds: form.amenityIds,
+        amenitiesOther: amenitiesOtherOn ? form.amenitiesOther : "",
         accessibility: form.accessibility.trim() || null,
         familyAccommodation: form.familyAccommodation,
       };
@@ -894,33 +905,16 @@ export default function VendorSpaEditPage() {
       <section id="edit-amenities" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
         <h2 className="font-semibold text-veda-900">Amenities</h2>
         <p className="text-sm text-foreground/60">
-          Optional. Shown as chips on your public listing. Select every amenity guests can use.
+          Optional. Shown as chips on your public listing. Select every amenity guests can use, or Other for extras.
         </p>
-        <div className="flex flex-wrap gap-2">
-          {(meta.amenities ?? []).map((a) => {
-            const on = form.amenityIds.includes(a.id);
-            return (
-              <button
-                key={a.id}
-                type="button"
-                onClick={() =>
-                  set({
-                    amenityIds: on
-                      ? form.amenityIds.filter((id) => id !== a.id)
-                      : [...form.amenityIds, a.id],
-                  })
-                }
-                className={`rounded-full px-3 py-1.5 text-sm ${
-                  on
-                    ? "bg-veda-600 text-white"
-                    : "border border-veda-200 text-veda-800 hover:bg-veda-50"
-                }`}
-              >
-                {a.name}
-              </button>
-            );
-          })}
-        </div>
+        <AmenitiesPicker
+          amenityIds={form.amenityIds}
+          onAmenityIdsChange={(amenityIds) => set({ amenityIds })}
+          otherEnabled={amenitiesOtherOn}
+          onOtherEnabledChange={setAmenitiesOtherOn}
+          otherText={form.amenitiesOther}
+          onOtherTextChange={(amenitiesOther) => set({ amenitiesOther })}
+        />
       </section>
 
       <section id="edit-stay" className="mt-5 scroll-mt-28 space-y-3 rounded-2xl border border-veda-100 bg-white p-5">
@@ -1228,6 +1222,12 @@ export default function VendorSpaEditPage() {
           <p className="text-sm text-foreground/60">
             Save each treatment before adding another. Delete asks for confirmation first.
           </p>
+          {listedTreatmentNames.length > 0 ? (
+            <div className="rounded-lg bg-veda-50 px-3 py-2 text-sm text-foreground/75">
+              <p className="font-medium text-veda-900">Listed on the public page until you add priced treatments:</p>
+              <p className="mt-1">{listedTreatmentNames.join(", ")}</p>
+            </div>
+          ) : null}
           {treatments.map((t, i) => (
             <div
               key={t.id ?? t.clientKey ?? `new-${i}`}

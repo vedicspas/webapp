@@ -18,6 +18,9 @@ import {
   removeFeaturedSpa,
   upsertFeaturedSpa,
 } from "../lib/featuredSpas.js";
+import { replaceSpaAmenities, replaceSpaOpenHours, saveSpaNameLists } from "../lib/spaQueries.js";
+import { saveSpaStay } from "../lib/spaStay.js";
+import { appendUploadedSpaPhoto, multipartField } from "../lib/spaPhotos.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -55,6 +58,8 @@ function csvIds(raw?: string): number[] {
 const clinicFilters = z.object({
   clinicName: z.string().max(160).optional(),
   clinicId: z.string().max(12).optional(),
+  vendorName: z.string().max(160).optional(),
+  vendorId: z.string().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   categoryIds: z.string().optional(),
@@ -174,6 +179,15 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       where.push("s.clinic_code LIKE ?");
       values.push(`%${q.clinicId.trim().toUpperCase()}%`);
     }
+    if (q.vendorName?.trim()) {
+      where.push("v.business_name LIKE ?");
+      values.push(`%${q.vendorName.trim()}%`);
+    }
+    const vendorId = Number(q.vendorId ?? "");
+    if (Number.isInteger(vendorId) && vendorId > 0) {
+      where.push("s.vendor_id = ?");
+      values.push(vendorId);
+    }
     if (q.from) {
       where.push("DATE(s.created_at) >= ?");
       values.push(q.from);
@@ -227,8 +241,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       pending_claims: number;
       inquiry_count: number;
       featured_order: number | null;
+      phone: string | null;
+      email: string | null;
+      website: string | null;
     }>(
       `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published, s.origin,
+         s.phone, s.email, s.website,
          v.id AS vendor_id, v.business_name, v.status AS vendor_status,
          (SELECT COUNT(*) FROM spa_claims c WHERE c.spa_id = s.id AND c.status = 'pending') AS pending_claims,
          (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count,
@@ -250,6 +268,9 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         cityName: r.city_name || staticCache.city(r.city_id ?? 0)?.name || "",
         isPublished: Boolean(r.is_published),
         origin: r.origin,
+        phone: r.phone,
+        email: r.email,
+        website: r.website,
         vendorId: r.vendor_id,
         vendorName: r.business_name,
         vendorStatus: r.vendor_status,
@@ -927,6 +948,26 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     email: z.union([z.string().email(), z.literal("")]).nullable().optional(),
     website: z.union([z.string().url(), z.literal("")]).nullable().optional(),
     isPublished: z.boolean().optional().default(true),
+    amenityIds: z.array(z.number().int().positive()).optional().default([]),
+    amenitiesOther: z.union([z.string(), z.array(z.string())]).optional().default([]),
+    treatmentNames: z.union([z.string(), z.array(z.string())]).optional().default([]),
+    languages: z.array(z.string().max(80)).optional().default([]),
+    dietaryOptions: z.array(z.string().max(80)).optional().default([]),
+    airportPickup: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
+    accommodationTypeIds: z.array(z.number().int().positive()).optional().default([]),
+    accommodationOther: z.string().max(200).nullable().optional().default(null),
+    accessibility: z.string().max(2000).nullable().optional().default(null),
+    familyAccommodation: z.enum(["on_request", "not_available"]).nullable().optional().default(null),
+    openHours: z
+      .array(
+        z.object({
+          weekday: z.number().int().min(0).max(6),
+          openTime: z.string().regex(/^\d{2}:\d{2}$/),
+          closeTime: z.string().regex(/^\d{2}:\d{2}$/),
+        })
+      )
+      .optional()
+      .default([]),
   });
 
   app.post("/admin/spas", async (request, reply) => {
@@ -978,7 +1019,37 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         body.isPublished ? 1 : 0,
       ]
     );
-    return reply.code(201).send({ id: result.insertId, slug, clinicCode });
+    const spaId = result.insertId;
+    await saveSpaStay(spaId, body);
+    await replaceSpaAmenities(spaId, body.amenityIds);
+    await saveSpaNameLists(spaId, {
+      amenitiesOther: body.amenitiesOther,
+      treatmentNames: body.treatmentNames,
+    });
+    if (body.openHours.length > 0) {
+      await replaceSpaOpenHours(spaId, body.openHours);
+    }
+    return reply.code(201).send({ id: spaId, slug, clinicCode });
+  });
+
+  app.post("/admin/spas/:id/photos", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    if (!Number.isInteger(spaId) || spaId <= 0) {
+      return reply.code(400).send({ error: "Invalid clinic" });
+    }
+    const spa = await queryOne<{ id: number }>("SELECT id FROM spas WHERE id = ?", [spaId]);
+    if (!spa) return reply.code(404).send({ error: "Clinic not found" });
+    const file = await request.file();
+    if (!file) return reply.code(400).send({ error: "Choose an image file to upload" });
+    const buffer = await file.toBuffer();
+    const title = multipartField(file, ["title", "alt"]).slice(0, 200);
+    try {
+      const saved = await appendUploadedSpaPhoto(spaId, buffer, file.mimetype, title);
+      return reply.code(201).send(saved);
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode ?? 400;
+      return reply.code(status).send({ error: (err as Error).message });
+    }
   });
 
   app.get("/admin/spas/:id/featured", async (request, reply) => {

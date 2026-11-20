@@ -170,6 +170,8 @@ CREATE TABLE spas (
   accommodation_other VARCHAR(200) NULL,
   accessibility TEXT NULL,
   family_accommodation ENUM('on_request','not_available') NULL,
+  amenities_other TEXT NULL,
+  treatment_names TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   KEY idx_spa_city (city_id),
   KEY idx_spa_geo (lat, lng),

@@ -1,6 +1,7 @@
 import type { SpaSummary } from "@vedic/shared";
 import { execute, query } from "../db/pool.js";
 import { staticCache } from "../cache/staticCache.js";
+import { decodeNameList, encodeNameList, parseCommaNames } from "./nameList.js";
 import { publicPhotoUrl } from "./uploads.js";
 
 export interface SpaSummaryRow {
@@ -84,6 +85,16 @@ export async function treatmentNamesBySpa(spaIds: number[]): Promise<Map<number,
     names.push(row.name);
     map.set(spaId, names);
   }
+  const missing = spaIds.filter((id) => !(map.get(id)?.length));
+  if (missing.length === 0) return map;
+  const listed = await query<{ id: number; treatment_names: string | null }>(
+    `SELECT id, treatment_names FROM spas WHERE id IN (${missing.map(() => "?").join(",")})`,
+    missing
+  );
+  for (const row of listed) {
+    const names = decodeNameList(row.treatment_names);
+    if (names.length) map.set(row.id, names);
+  }
   return map;
 }
 
@@ -108,6 +119,41 @@ export async function replaceSpaAmenities(spaId: number, amenityIds: number[]): 
   await execute("DELETE FROM spa_amenities WHERE spa_id = ?", [spaId]);
   for (const id of unique) {
     await execute("INSERT INTO spa_amenities (spa_id, amenity_id) VALUES (?,?)", [spaId, id]);
+  }
+}
+
+export async function saveSpaNameLists(
+  spaId: number,
+  input: {
+    amenitiesOther?: string | string[] | null;
+    treatmentNames?: string | string[] | null;
+  }
+): Promise<void> {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  if (input.amenitiesOther !== undefined) {
+    sets.push("amenities_other = ?");
+    values.push(encodeNameList(parseCommaNames(input.amenitiesOther)));
+  }
+  if (input.treatmentNames !== undefined) {
+    sets.push("treatment_names = ?");
+    values.push(encodeNameList(parseCommaNames(input.treatmentNames)));
+  }
+  if (!sets.length) return;
+  values.push(spaId);
+  await execute(`UPDATE spas SET ${sets.join(", ")} WHERE id = ?`, values);
+}
+
+export async function replaceSpaOpenHours(
+  spaId: number,
+  hours: Array<{ weekday: number; openTime: string; closeTime: string }>
+): Promise<void> {
+  await execute("DELETE FROM spa_open_hours WHERE spa_id = ?", [spaId]);
+  for (const hour of hours) {
+    await execute(
+      "INSERT INTO spa_open_hours (spa_id, weekday, open_time, close_time) VALUES (?,?,?,?)",
+      [spaId, hour.weekday, `${hour.openTime}:00`, `${hour.closeTime}:00`]
+    );
   }
 }
 

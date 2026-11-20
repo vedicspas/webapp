@@ -79,7 +79,9 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
       spa.accommodationOther?.trim() ||
       (spa.accommodationTypes?.length ?? 0) > 0
   );
-  const showAmenities = spa.amenityIds.length > 0 || hasStay;
+  const extraAmenities = spa.amenitiesOther ?? [];
+  const listedTreatments = spa.treatments.length > 0 ? [] : (spa.listedTreatmentNames ?? []);
+  const showAmenities = spa.amenityIds.length > 0 || extraAmenities.length > 0 || hasStay;
 
   const inner = (
     <div className="mx-auto max-w-6xl px-4 py-6">
@@ -131,10 +133,10 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
 
           {showAmenities ? (
             <div id="listing-amenities" className="scroll-mt-16">
-              {spa.amenityIds.length > 0 ? (
+              {spa.amenityIds.length > 0 || extraAmenities.length > 0 ? (
                 <>
                   <h2 className="mt-8 text-lg font-semibold text-veda-900">Amenities</h2>
-                  <AmenityList amenityIds={spa.amenityIds} />
+                  <AmenityList amenityIds={spa.amenityIds} extraNames={extraAmenities} />
                 </>
               ) : null}
               <StayDetails spa={spa} />
@@ -165,7 +167,21 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
                   <TreatmentDescription text={t.description} />
                 </li>
               ))}
-              {spa.treatments.length === 0 ? (
+              {listedTreatments.length > 0 ? (
+                <li>
+                  <div className="flex flex-wrap gap-2">
+                    {listedTreatments.map((name) => (
+                      <span
+                        key={name}
+                        className="rounded-full border border-veda-200 bg-white px-3 py-1 text-sm text-veda-800"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                </li>
+              ) : null}
+              {spa.treatments.length === 0 && listedTreatments.length === 0 ? (
                 <li className="text-sm text-foreground/60">No treatments listed yet.</li>
               ) : null}
             </ul>

@@ -14,6 +14,7 @@ import {
 } from "../lib/spaQueries.js";
 import { publicPayloadHasNotes, withFeaturedFirst } from "../lib/featuredSpas.js";
 import { publicPhotoUrl } from "../lib/uploads.js";
+import { decodeNameList } from "../lib/nameList.js";
 import { loadSpaStay } from "../lib/spaStay.js";
 import { loadProgramRuns, weekdaysFromMask } from "../lib/treatmentSchedule.js";
 import { loadTreatmentConditions } from "../lib/treatmentConditions.js";
@@ -305,6 +306,8 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
         shopifyCollectionHandle: string | null;
         depositBps: number | null;
         bookingFeeMinor: number | null;
+        amenitiesOther: string | null;
+        treatmentNames: string | null;
       }
     >(
       `${SPA_SUMMARY_SELECT.replace(
@@ -316,7 +319,8 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
          s.offers_online_consultation AS offersOnlineConsultation,
          s.online_consultation_url AS onlineConsultationUrl,
          s.shopify_collection_handle AS shopifyCollectionHandle,
-         s.deposit_bps AS depositBps, s.booking_fee_minor AS bookingFeeMinor`
+         s.deposit_bps AS depositBps, s.booking_fee_minor AS bookingFeeMinor,
+         s.amenities_other AS amenitiesOther, s.treatment_names AS treatmentNames`
       )} WHERE s.slug = ? AND s.is_published = 1`,
       [slug]
     );
@@ -371,6 +375,8 @@ export async function spaRoutes(app: FastifyInstance): Promise<void> {
       treatments: await mapPublicTreatments(treatments),
       openHours: hours,
       ...stay,
+      amenitiesOther: decodeNameList(row.amenitiesOther),
+      listedTreatmentNames: decodeNameList(row.treatmentNames),
     };
     reply.header("Cache-Control", "private, no-store");
     return detail;

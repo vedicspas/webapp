@@ -224,6 +224,8 @@ export interface SpaDetail extends SpaSummary {
   accommodationOther: string | null;
   accessibility: string | null;
   familyAccommodation: OnRequestFlag | null;
+  amenitiesOther: string[];
+  listedTreatmentNames: string[];
 }
 
 export interface OpenHours {

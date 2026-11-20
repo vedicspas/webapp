@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 import { shortDate } from "@/lib/format";
 import { toast } from "@/stores/toastStore";
 
@@ -76,18 +77,15 @@ export function FeaturedClinicModal({
     };
   }, [spa, call]);
 
+  useBodyScrollLock(Boolean(spa));
+
   useEffect(() => {
     if (!spa) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape" && !busy && !confirmRemove) onClose();
     }
     document.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [spa, busy, confirmRemove, onClose]);
 
   if (!spa) return null;
@@ -139,7 +137,7 @@ export function FeaturedClinicModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="presentation">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" role="presentation">
       <button
         type="button"
         aria-label="Dismiss"
