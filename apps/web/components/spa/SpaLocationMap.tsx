@@ -2,8 +2,9 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { AttributionControl, MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
+import { googleMapsDirectionsUrl } from "@/lib/format";
 import type { SpaLocationData } from "./SpaLocation";
 
 const pin = L.divIcon({
@@ -55,7 +56,7 @@ function ClinicMap({ loc, interactive }: { loc: SpaLocationData; interactive: bo
       zoom={14}
       className="h-full w-full"
       zoomControl={false}
-      attributionControl
+      attributionControl={false}
       dragging={interactive}
       scrollWheelZoom={interactive}
       doubleClickZoom={interactive}
@@ -63,14 +64,37 @@ function ClinicMap({ loc, interactive }: { loc: SpaLocationData; interactive: bo
       keyboard={interactive}
       boxZoom={interactive}
     >
+      <AttributionControl prefix={false} />
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <Marker position={center} icon={pin} />
       <InvalidateSize />
       {interactive ? <ZoomControls /> : null}
     </MapContainer>
+  );
+}
+
+function GetDirectionsChip({ loc }: { loc: SpaLocationData }) {
+  const href = googleMapsDirectionsUrl(loc);
+  if (!href) return null;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={`Get directions to ${loc.name}`}
+      className="absolute left-3 top-3 z-[1100] inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-2 text-sm font-medium text-veda-900 shadow-md hover:bg-white"
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <path d="M9 21V10a4 4 0 0 1 4-4h8" />
+        <path d="m17 2 4 4-4 4" />
+      </svg>
+      Get directions
+    </a>
   );
 }
 
@@ -88,15 +112,16 @@ export default function SpaLocationMap({
   if (mode === "preview") {
     return (
       <div className="relative isolate h-72 overflow-hidden rounded-2xl border border-veda-100 bg-veda-50 sm:h-80">
-        <div className="pointer-events-none h-full w-full">
+        <div className="h-full w-full">
           <ClinicMap loc={loc} interactive={false} />
         </div>
         <button
           type="button"
-          className="absolute inset-0 z-10 cursor-pointer bg-transparent"
+          className="absolute inset-x-0 top-0 z-10 cursor-pointer bg-transparent bottom-7"
           aria-label={`Open map of ${loc.name}`}
           onClick={onOpen}
         />
+        <GetDirectionsChip loc={loc} />
       </div>
     );
   }
@@ -116,6 +141,7 @@ export default function SpaLocationMap({
         className="relative z-10 h-[80vh] w-[80vw] overflow-hidden rounded-2xl bg-white shadow-[0_24px_80px_rgba(16,31,23,0.35)]"
       >
         <ClinicMap loc={loc} interactive />
+        <GetDirectionsChip loc={loc} />
         <button
           type="button"
           aria-label="Close map"

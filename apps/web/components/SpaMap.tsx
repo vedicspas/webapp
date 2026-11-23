@@ -1,6 +1,6 @@
 "use client";
 
-import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
+import { AttributionControl, MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import Link from "next/link";
 import type { SpaSummary } from "@vedic/shared";
@@ -28,9 +28,11 @@ export default function SpaMap({ spas }: { spas: SpaSummary[] }) {
       zoom={pinned.length === 1 ? 12 : 3}
       className="h-full w-full rounded-2xl"
       scrollWheelZoom
+      attributionControl={false}
     >
+      <AttributionControl prefix={false} />
       <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       {pinned.map((spa) => (

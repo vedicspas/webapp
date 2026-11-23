@@ -75,7 +75,7 @@ export function formatSpaLocality(parts: {
     .join(", ");
 }
 
-export function googleMapsUrl(opts: {
+function mapsDestinationQuery(opts: {
   lat?: number | null;
   lng?: number | null;
   address?: string | null;
@@ -84,12 +84,31 @@ export function googleMapsUrl(opts: {
     const lat = Number(opts.lat);
     const lng = Number(opts.lng);
     if (Number.isFinite(lat) && Number.isFinite(lng)) {
-      return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+      return `${lat},${lng}`;
     }
   }
   const q = opts.address?.trim();
+  return q ? encodeURIComponent(q) : null;
+}
+
+export function googleMapsUrl(opts: {
+  lat?: number | null;
+  lng?: number | null;
+  address?: string | null;
+}): string | null {
+  const q = mapsDestinationQuery(opts);
   if (!q) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+  return `https://www.google.com/maps/search/?api=1&query=${q}`;
+}
+
+export function googleMapsDirectionsUrl(opts: {
+  lat?: number | null;
+  lng?: number | null;
+  address?: string | null;
+}): string | null {
+  const q = mapsDestinationQuery(opts);
+  if (!q) return null;
+  return `https://www.google.com/maps/dir/?api=1&destination=${q}`;
 }
 
 export const ON_REQUEST_LABELS: Record<"on_request" | "not_available", string> = {
