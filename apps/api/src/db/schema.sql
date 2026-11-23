@@ -166,6 +166,7 @@ CREATE TABLE spas (
   booking_fee_minor INT UNSIGNED NULL,     -- only for payment mode 'booking_fee'
   currency_id TINYINT UNSIGNED NOT NULL,
   is_published TINYINT(1) NOT NULL DEFAULT 0,
+  published_at DATETIME NULL,
   airport_pickup ENUM('on_request','not_available') NULL,
   accommodation_other VARCHAR(200) NULL,
   accessibility TEXT NULL,

@@ -21,6 +21,7 @@ import {
 import { replaceSpaAmenities, replaceSpaOpenHours, saveSpaNameLists } from "../lib/spaQueries.js";
 import { saveSpaStay } from "../lib/spaStay.js";
 import { appendUploadedSpaPhoto, multipartField } from "../lib/spaPhotos.js";
+import { DUPLICATE_CLINIC_CODE, findDuplicateClinics } from "../lib/clinicDuplicate.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
   if (request.method === "OPTIONS") return;
@@ -65,6 +66,7 @@ const clinicFilters = z.object({
   categoryIds: z.string().optional(),
   featured: z.string().optional(),
   status: z.enum(["all", "unclaimed", "published", "waiting"]).optional(),
+  origin: z.enum(["all", "admin", "vendor", "imported"]).optional(),
   page: z.string().optional(),
   pageSize: z.string().optional(),
 });
@@ -214,6 +216,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       where.push("s.vendor_id IS NOT NULL");
       where.push("s.is_published = 0");
     }
+    if (q.origin && q.origin !== "all") {
+      where.push("s.origin = ?");
+      values.push(q.origin);
+    }
     const whereSql = where.join(" AND ");
     const orderSql = featuredOnly
       ? "fs.display_order ASC, s.name ASC"
@@ -244,16 +250,26 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       phone: string | null;
       email: string | null;
       website: string | null;
+      postal_code: string;
+      created_at: Date | string;
+      published_at: Date | string | null;
+      rating_avg: number | null;
+      rating_count: number | null;
     }>(
       `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published, s.origin,
-         s.phone, s.email, s.website,
+         s.phone, s.email, s.website, s.postal_code, s.created_at, s.published_at,
          v.id AS vendor_id, v.business_name, v.status AS vendor_status,
          (SELECT COUNT(*) FROM spa_claims c WHERE c.spa_id = s.id AND c.status = 'pending') AS pending_claims,
          (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count,
-         fs.display_order AS featured_order
+         fs.display_order AS featured_order,
+         r.avg_rating AS rating_avg, r.cnt AS rating_count
        FROM spas s
        LEFT JOIN vendors v ON v.id = s.vendor_id
        LEFT JOIN featured_spas fs ON fs.spa_id = s.id
+       LEFT JOIN (
+         SELECT spa_id, ROUND(AVG(rating), 1) AS avg_rating, COUNT(*) AS cnt
+         FROM reviews WHERE status = 'published' GROUP BY spa_id
+       ) r ON r.spa_id = s.id
        WHERE ${whereSql}
        ORDER BY ${orderSql}
        LIMIT ${pageSize} OFFSET ${offset}`,
@@ -266,6 +282,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         name: r.name,
         clinicCode: r.clinic_code,
         cityName: r.city_name || staticCache.city(r.city_id ?? 0)?.name || "",
+        postalCode: r.postal_code?.trim() || "",
         isPublished: Boolean(r.is_published),
         origin: r.origin,
         phone: r.phone,
@@ -278,6 +295,10 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         pendingClaims: Number(r.pending_claims ?? 0),
         inquiryCount: Number(r.inquiry_count ?? 0),
         featuredOrder: r.featured_order == null ? null : Number(r.featured_order),
+        createdAt: new Date(r.created_at).toISOString(),
+        publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null,
+        ratingAvg: Number(r.rating_avg ?? 0),
+        ratingCount: Number(r.rating_count ?? 0),
       })),
       categories: allCategories(),
       page,
@@ -304,10 +325,12 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       "SELECT is_published FROM spas WHERE id = ?",
       [spaId]
     );
-    const result = await execute("UPDATE spas SET is_published = ? WHERE id = ?", [
-      body.isPublished ? 1 : 0,
-      spaId,
-    ]);
+    const result = await execute(
+      `UPDATE spas SET is_published = ?,
+         published_at = IF(? = 1 AND is_published = 0, UTC_TIMESTAMP(), published_at)
+       WHERE id = ?`,
+      [body.isPublished ? 1 : 0, body.isPublished ? 1 : 0, spaId]
+    );
     if (result.affectedRows === 0) return reply.code(404).send({ error: "Spa not found" });
     if (body.isPublished && !before?.is_published) {
       await notifySpaOwnerForPublish(spaId, true);
@@ -968,6 +991,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       )
       .optional()
       .default([]),
+    confirmDuplicate: z.boolean().optional().default(false),
   });
 
   app.post("/admin/spas", async (request, reply) => {
@@ -984,17 +1008,79 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const payAtSpa = staticCache.paymentModeByCode("pay_at_spa");
     const usd = staticCache.currencies.find((c) => c.code === "USD");
     if (!payAtSpa || !usd) return reply.code(500).send({ error: "Missing payment or currency lookup" });
+    const email = body.email?.trim() ? body.email.trim() : null;
+    const website = body.website?.trim() ? body.website.trim() : null;
+
+    if (!body.confirmDuplicate) {
+      const existing = await query<{
+        id: number;
+        slug: string;
+        name: string;
+        address_line: string;
+        city_name: string;
+        country_id: number | null;
+        postal_code: string;
+        lat: number | null;
+        lng: number | null;
+        phone: string | null;
+        email: string | null;
+        website: string | null;
+        origin: "vendor" | "admin" | "imported";
+        vendor_id: number | null;
+        is_published: number;
+      }>(
+        `SELECT id, slug, name, address_line, city_name, country_id, postal_code, lat, lng,
+                phone, email, website, origin, vendor_id, is_published
+         FROM spas`
+      );
+      const matches = findDuplicateClinics(
+        {
+          name: body.name,
+          addressLine: body.addressLine,
+          cityName: body.cityName,
+          countryId: body.countryId ?? null,
+          postalCode: body.postalCode,
+          lat: body.lat ?? null,
+          lng: body.lng ?? null,
+          phone: body.phone ?? null,
+          email: email ?? null,
+          website: website ?? null,
+        },
+        existing.map((row) => ({
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          addressLine: row.address_line,
+          cityName: row.city_name,
+          countryId: row.country_id,
+          postalCode: row.postal_code,
+          lat: row.lat,
+          lng: row.lng,
+          phone: row.phone,
+          email: row.email,
+          website: row.website,
+          origin: row.origin,
+          vendorId: row.vendor_id,
+          isPublished: row.is_published,
+        }))
+      );
+      if (matches.length > 0) {
+        return reply.code(409).send({
+          error: "Possible duplicate clinics",
+          code: DUPLICATE_CLINIC_CODE,
+          matches,
+        });
+      }
+    }
 
     const slug = await uniqueSlug(body.name);
     const clinicCode = await allocateClinicCode();
-    const email = body.email?.trim() ? body.email.trim() : null;
-    const website = body.website?.trim() ? body.website.trim() : null;
     const result = await execute(
       `INSERT INTO spas
         (vendor_id, origin, clinic_code, slug, name, short_description, description, address_line, postal_code,
          country_id, state, city_name, city_id, lat, lng, phone, email, website,
-         payment_mode_id, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         payment_mode_id, currency_id, is_published, published_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         null,
         "admin",
@@ -1017,6 +1103,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         payAtSpa.id,
         usd.id,
         body.isPublished ? 1 : 0,
+        body.isPublished ? new Date() : null,
       ]
     );
     const spaId = result.insertId;

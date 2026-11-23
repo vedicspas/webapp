@@ -13,7 +13,12 @@ import { TreatmentCaption } from "@/components/TreatmentCaption";
 import { InquiryTable, type AdminInquiry } from "@/components/admin/InquiryTable";
 import { DateField } from "@/components/DateField";
 import { FeaturedClinicModal, type FeaturedClinicTarget } from "@/components/admin/FeaturedClinicModal";
-import { AdminClinicRow, VENDOR_STATUS_BADGE, type AdminSpa } from "@/components/admin/AdminClinicRow";
+import {
+  AdminClinicRow,
+  LISTING_ORIGIN_LABEL,
+  VENDOR_STATUS_BADGE,
+  type AdminSpa,
+} from "@/components/admin/AdminClinicRow";
 import { useBodyScrollLock } from "@/lib/useBodyScrollLock";
 
 interface Stats {
@@ -104,6 +109,7 @@ interface Paged<T> {
 
 type Tab = "vendors" | "spas" | "reviews" | "bookings" | "messages";
 type ListingStatus = "all" | "unclaimed" | "published" | "waiting";
+type ListingOrigin = "all" | AdminSpa["origin"];
 
 const LISTING_STATUS_FILTERS: Array<{ id: ListingStatus; label: string }> = [
   { id: "all", label: "All" },
@@ -176,6 +182,7 @@ export default function AdminPage() {
   const [categoryIds, setCategoryIds] = useState<number[]>([]);
   const [featuredOnly, setFeaturedOnly] = useState(false);
   const [listingStatus, setListingStatus] = useState<ListingStatus>("all");
+  const [listingOrigin, setListingOrigin] = useState<ListingOrigin>("all");
   const [appliedClinic, setAppliedClinic] = useState({
     clinicName: "",
     clinicId: "",
@@ -185,6 +192,7 @@ export default function AdminPage() {
     categoryIds: [] as number[],
     featuredOnly: false,
     listingStatus: "all" as ListingStatus,
+    listingOrigin: "all" as ListingOrigin,
   });
   const [featuredSpa, setFeaturedSpa] = useState<FeaturedClinicTarget | null>(null);
   const [appliedVendor, setAppliedVendor] = useState({ name: "", email: "", from: "", to: "" });
@@ -220,6 +228,9 @@ export default function AdminPage() {
     if (appliedClinic.featuredOnly) q.set("featured", "1");
     if (appliedClinic.listingStatus && appliedClinic.listingStatus !== "all") {
       q.set("status", appliedClinic.listingStatus);
+    }
+    if (appliedClinic.listingOrigin && appliedClinic.listingOrigin !== "all") {
+      q.set("origin", appliedClinic.listingOrigin);
     }
     q.set("page", String(page));
     q.set("pageSize", String(pageSize));
@@ -455,6 +466,7 @@ export default function AdminPage() {
           categoryIds,
           featuredOnly,
           listingStatus,
+          listingOrigin,
         });
       }}
     >
@@ -473,15 +485,30 @@ export default function AdminPage() {
           />
         </label>
         {tab === "spas" ? (
-          <label className={label}>
-            Vendor name
-            <input
-              className={input}
-              value={vendorFilterName}
-              onChange={(e) => setVendorFilterName(e.target.value)}
-              placeholder="Business name"
-            />
-          </label>
+          <>
+            <label className={label}>
+              Vendor name
+              <input
+                className={input}
+                value={vendorFilterName}
+                onChange={(e) => setVendorFilterName(e.target.value)}
+                placeholder="Business name"
+              />
+            </label>
+            <label className={label}>
+              Added by
+              <select
+                className={input}
+                value={listingOrigin}
+                onChange={(e) => setListingOrigin(e.target.value as ListingOrigin)}
+              >
+                <option value="all">All sources</option>
+                <option value="admin">{LISTING_ORIGIN_LABEL.admin}</option>
+                <option value="vendor">{LISTING_ORIGIN_LABEL.vendor}</option>
+                <option value="imported">{LISTING_ORIGIN_LABEL.imported}</option>
+              </select>
+            </label>
+          </>
         ) : null}
         <label className={label}>
           From date
@@ -546,6 +573,7 @@ export default function AdminPage() {
             setCategoryIds([]);
             setFeaturedOnly(false);
             setListingStatus("all");
+            setListingOrigin("all");
             setAppliedClinic({
               clinicName: "",
               clinicId: "",
@@ -555,6 +583,7 @@ export default function AdminPage() {
               categoryIds: [],
               featuredOnly: false,
               listingStatus: "all",
+              listingOrigin: "all",
             });
             setPage(1);
           }}

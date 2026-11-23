@@ -10,6 +10,11 @@ import { toast } from "@/stores/toastStore";
 import { AmenitiesPicker } from "@/components/AmenitiesPicker";
 import { TagInput } from "@/components/TagInput";
 import { RemotePhoto } from "@/components/RemotePhoto";
+import {
+  DuplicateClinicModal,
+  duplicateMatchesFromError,
+  type DuplicateClinicMatch,
+} from "@/components/admin/DuplicateClinicModal";
 import { ON_REQUEST_LABELS, WEEKDAYS } from "@/lib/format";
 import type { OnRequestFlag } from "@vedic/shared";
 
@@ -60,6 +65,7 @@ export default function AdminAddClinicPage() {
   );
   const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [fileInputKey, setFileInputKey] = useState(0);
+  const [duplicateMatches, setDuplicateMatches] = useState<DuplicateClinicMatch[] | null>(null);
 
   if (authStatus === "unauthenticated" || (session && !isAdmin)) {
     return (
@@ -96,8 +102,7 @@ export default function AdminAddClinicPage() {
     });
   }
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function saveClinic(confirmDuplicate = false) {
     setBusy(true);
     try {
       const latNum = lat.trim() === "" ? null : Number(lat);
@@ -132,6 +137,7 @@ export default function AdminAddClinicPage() {
           openHours: hours
             .filter((h) => !h.closed)
             .map(({ weekday, openTime, closeTime }) => ({ weekday, openTime, closeTime })),
+          confirmDuplicate,
         },
       });
       for (const photo of pendingPhotos) {
@@ -144,9 +150,22 @@ export default function AdminAddClinicPage() {
       toast("Clinic added.");
       router.push(created.slug ? `/spas/${created.slug}` : "/admin");
     } catch (err) {
+      if (!confirmDuplicate) {
+        const matches = duplicateMatchesFromError(err);
+        if (matches) {
+          setDuplicateMatches(matches);
+          setBusy(false);
+          return;
+        }
+      }
       toast(err instanceof Error ? err.message : "Could not add clinic", "error");
       setBusy(false);
     }
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    await saveClinic(false);
   }
 
   return (
@@ -457,6 +476,12 @@ export default function AdminAddClinicPage() {
           {busy ? "Saving…" : "Add clinic"}
         </button>
       </form>
+      <DuplicateClinicModal
+        matches={duplicateMatches}
+        busy={busy}
+        onConfirmDifferent={() => void saveClinic(true)}
+        onCancel={() => setDuplicateMatches(null)}
+      />
     </div>
   );
 }

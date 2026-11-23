@@ -3,6 +3,8 @@
 import Link from "next/link";
 import type { VendorStatus } from "@vedic/shared";
 import type { FeaturedClinicTarget } from "@/components/admin/FeaturedClinicModal";
+import { RatingStars } from "@/components/RatingStars";
+import { shortDate } from "@/lib/format";
 
 export const VENDOR_STATUS_BADGE: Record<VendorStatus, string> = {
   pending: "bg-amber-100 text-amber-800",
@@ -16,6 +18,7 @@ export interface AdminSpa {
   name: string;
   clinicCode: string;
   cityName: string;
+  postalCode: string;
   isPublished: boolean;
   origin: "vendor" | "admin" | "imported";
   phone: string | null;
@@ -27,7 +30,23 @@ export interface AdminSpa {
   pendingClaims: number;
   inquiryCount: number;
   featuredOrder: number | null;
+  createdAt: string;
+  publishedAt: string | null;
+  ratingAvg: number;
+  ratingCount: number;
 }
+
+export const LISTING_ORIGIN_LABEL: Record<AdminSpa["origin"], string> = {
+  admin: "Added by admin",
+  vendor: "Added by vendor",
+  imported: "Imported",
+};
+
+const ORIGIN_BADGE: Record<AdminSpa["origin"], string> = {
+  admin: "bg-veda-100 text-veda-800",
+  vendor: "bg-slate-100 text-slate-700",
+  imported: "bg-indigo-100 text-indigo-800",
+};
 
 function websiteHref(url: string): string {
   const trimmed = url.trim();
@@ -53,6 +72,9 @@ export function AdminClinicRow({
           <Link href={`/spas/${spa.slug}`} className="font-medium text-veda-900 hover:underline">
             {spa.name}
           </Link>
+          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ORIGIN_BADGE[spa.origin]}`}>
+            {LISTING_ORIGIN_LABEL[spa.origin]}
+          </span>
           {spa.website ? (
             <a
               href={websiteHref(spa.website)}
@@ -73,6 +95,7 @@ export function AdminClinicRow({
         </div>
         <p className="text-sm text-foreground/60">
           Clinic ID {spa.clinicCode} &middot; {spa.cityName}
+          {spa.postalCode ? ` · ${spa.postalCode}` : ""}
           {spa.isUnclaimed ? (
             <>
               {" "}
@@ -131,6 +154,16 @@ export function AdminClinicRow({
             ) : null}
           </p>
         ) : null}
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-foreground/65">
+          <span>Created {shortDate(spa.createdAt)}</span>
+          <span aria-hidden>·</span>
+          <span>{spa.publishedAt ? `Published ${shortDate(spa.publishedAt)}` : "Not published"}</span>
+          <span aria-hidden>·</span>
+          <span className="inline-flex items-center gap-1">
+            Rating
+            <RatingStars rating={spa.ratingAvg} count={spa.ratingCount || undefined} />
+          </span>
+        </p>
       </div>
       <div className="flex flex-wrap gap-2">
         {spa.featuredOrder != null ? (

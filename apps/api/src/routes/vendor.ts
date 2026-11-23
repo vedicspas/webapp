@@ -362,15 +362,15 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
          country_id, state, city_name, city_id,
          lat, lng, phone, email, website, offers_online_consultation, online_consultation_url,
          shopify_collection_handle, payment_mode_id, deposit_bps,
-         booking_fee_minor, currency_id, is_published)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+         booking_fee_minor, currency_id, is_published, published_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         vendor.id, clinicCode, slug, body.name, body.shortDescription, body.description, body.addressLine,
         body.postalCode, body.countryId, body.state.trim(), body.cityName.trim(), cityId,
         body.lat, body.lng, body.phone, body.email, body.website,
         body.offersOnlineConsultation ? 1 : 0, body.onlineConsultationUrl,
         body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
-        currency.id, body.isPublished ? 1 : 0,
+        currency.id, body.isPublished ? 1 : 0, body.isPublished ? new Date() : null,
       ]
     );
     await saveSpaStay(result.insertId, body);
@@ -418,7 +418,8 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
       `UPDATE spas SET name=?, short_description=?, description=?, address_line=?, postal_code=?,
          country_id=?, state=?, city_name=?, city_id=?, lat=?, lng=?, phone=?, email=?, website=?,
          offers_online_consultation=?, online_consultation_url=?, shopify_collection_handle=?,
-         payment_mode_id=?, deposit_bps=?, booking_fee_minor=?, currency_id=?, is_published=?
+         payment_mode_id=?, deposit_bps=?, booking_fee_minor=?, currency_id=?, is_published=?,
+         published_at=IF(? = 1 AND is_published = 0, UTC_TIMESTAMP(), published_at)
        WHERE id = ?`,
       [
         body.name, body.shortDescription, body.description, body.addressLine, body.postalCode,
@@ -426,7 +427,7 @@ export async function vendorRoutes(app: FastifyInstance): Promise<void> {
         body.lat, body.lng, body.phone, body.email, body.website,
         body.offersOnlineConsultation ? 1 : 0, body.onlineConsultationUrl,
         body.shopifyCollectionHandle, mode.id, depositBps, bookingFeeMinor,
-        currency.id, body.isPublished ? 1 : 0, spaId,
+        currency.id, body.isPublished ? 1 : 0, body.isPublished ? 1 : 0, spaId,
       ]
     );
     await saveSpaStay(spaId, body);

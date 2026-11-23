@@ -539,6 +539,10 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   await conn.query("UPDATE payment_modes SET requires_online_payment = 0 WHERE code = 'pay_at_spa'");
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS amenities_other TEXT NULL");
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS treatment_names TEXT NULL");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS published_at DATETIME NULL");
+  await conn.query(
+    "UPDATE spas SET published_at = created_at WHERE is_published = 1 AND published_at IS NULL"
+  );
   if (addingOnlinePayCol) {
     await conn.query(
       `UPDATE spas

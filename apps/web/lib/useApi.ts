@@ -5,6 +5,24 @@ import { useSession } from "next-auth/react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4100";
 
+export class ApiError extends Error {
+  readonly status: number;
+  readonly body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    const message = typeof body.error === "string" ? body.error : `Request failed (${status})`;
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.body = body;
+    Object.setPrototypeOf(this, ApiError.prototype);
+    Object.defineProperties(this, {
+      status: { value: status, enumerable: true, writable: false },
+      body: { value: body, enumerable: true, writable: false },
+    });
+  }
+}
+
 /** Authenticated fetch helper for client components. */
 export function useApi() {
   const { data: session, status } = useSession();
@@ -21,8 +39,8 @@ export function useApi() {
         },
         body: options.body === undefined ? undefined : isForm ? (options.body as FormData) : JSON.stringify(options.body),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error((data as { error?: string }).error ?? `Request failed (${res.status})`);
+      const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) throw new ApiError(res.status, data);
       return data as T;
     },
     [token]
