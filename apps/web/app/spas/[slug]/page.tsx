@@ -4,6 +4,7 @@ import { ApiError, getQuestions, getReviews, getSpa, getSpaSlugs } from "@/lib/a
 import { getSpaProducts } from "@/lib/shopify";
 import { RatingStars } from "@/components/RatingStars";
 import { AmenityList } from "@/components/spa/AmenityList";
+import { ListedNameChips } from "@/components/spa/ListedNameChips";
 import { StayDetails } from "@/components/spa/StayDetails";
 import { PhotoGallery } from "@/components/spa/PhotoGallery";
 import { BookingWidget } from "@/components/spa/BookingWidget";
@@ -169,16 +170,7 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
               ))}
               {listedTreatments.length > 0 ? (
                 <li>
-                  <div className="flex flex-wrap gap-2">
-                    {listedTreatments.map((name) => (
-                      <span
-                        key={name}
-                        className="rounded-full border border-veda-200 bg-white px-3 py-1 text-sm text-veda-800"
-                      >
-                        {name}
-                      </span>
-                    ))}
-                  </div>
+                  <ListedNameChips names={listedTreatments} />
                 </li>
               ) : null}
               {spa.treatments.length === 0 && listedTreatments.length === 0 ? (
@@ -188,16 +180,20 @@ export default async function SpaPage({ params }: PageProps<"/spas/[slug]">) {
           </section>
 
           <h2 className="mt-8 text-lg font-semibold text-veda-900">Opening hours</h2>
-          <ul className="mt-2 grid max-w-md grid-cols-1 gap-1 text-sm sm:grid-cols-2">
-            {spa.openHours.map((h) => (
-              <li key={h.weekday} className="flex justify-between gap-4 rounded bg-veda-50 px-3 py-1.5">
-                <span>{WEEKDAYS[h.weekday]}</span>
-                <span className="tabular-nums">
-                  {h.openTime} &ndash; {h.closeTime}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {spa.openHours.length > 0 ? (
+            <ul className="mt-2 grid max-w-md grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+              {spa.openHours.map((h) => (
+                <li key={h.weekday} className="flex justify-between gap-4 rounded bg-veda-50 px-3 py-1.5">
+                  <span>{WEEKDAYS[h.weekday]}</span>
+                  <span className="tabular-nums">
+                    {h.openTime} &ndash; {h.closeTime}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-3 text-sm text-foreground/60">No information available.</p>
+          )}
 
           <ShopSection
             products={products}

@@ -6,7 +6,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS payment_events, wishlist_items, answers, questions,
   contact_messages, site_settings, online_consultation_views,
-  featured_spa_events, featured_spas,
+  spa_edit_events, featured_spa_events, featured_spas,
   review_moderation_events, review_photos, review_responses, reviews, bookings, program_batches, program_runs, retreat_slots, treatments,
   spa_closures, spa_open_hours, spa_photos, spa_amenities, spa_languages, spa_dietary_options,
   spa_accommodation_types, spa_inquiries, spa_claim_notes, spa_claim_otps, spa_claims, spas, vendors,
@@ -174,6 +174,8 @@ CREATE TABLE spas (
   amenities_other TEXT NULL,
   treatment_names TEXT NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NULL,
+  updated_by_user_id BIGINT UNSIGNED NULL,
   KEY idx_spa_city (city_id),
   KEY idx_spa_geo (lat, lng),
   KEY idx_spa_origin (origin),
@@ -181,7 +183,19 @@ CREATE TABLE spas (
   CONSTRAINT fk_spa_country FOREIGN KEY (country_id) REFERENCES countries(id),
   CONSTRAINT fk_spa_city FOREIGN KEY (city_id) REFERENCES cities(id),
   CONSTRAINT fk_spa_payment_mode FOREIGN KEY (payment_mode_id) REFERENCES payment_modes(id),
-  CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id)
+  CONSTRAINT fk_spa_currency FOREIGN KEY (currency_id) REFERENCES currencies(id),
+  CONSTRAINT fk_spa_updated_by FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE spa_edit_events (
+  id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+  spa_id BIGINT UNSIGNED NOT NULL,
+  action ENUM('updated','photo_added','photo_removed') NOT NULL DEFAULT 'updated',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by_user_id BIGINT UNSIGNED NULL,
+  KEY idx_see_spa (spa_id, created_at),
+  CONSTRAINT fk_see_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+  CONSTRAINT fk_see_user FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE online_consultation_views (

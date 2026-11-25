@@ -540,6 +540,32 @@ async function applyPatches(conn: mysql.Connection): Promise<void> {
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS amenities_other TEXT NULL");
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS treatment_names TEXT NULL");
   await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS published_at DATETIME NULL");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS updated_at DATETIME NULL");
+  await run(conn, "ALTER TABLE spas ADD COLUMN IF NOT EXISTS updated_by_user_id BIGINT UNSIGNED NULL");
+  const [updatedByFk] = await conn.query(
+    `SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+     WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'spas' AND CONSTRAINT_NAME = 'fk_spa_updated_by'`
+  );
+  if (!Array.isArray(updatedByFk) || updatedByFk.length === 0) {
+    await run(
+      conn,
+      `ALTER TABLE spas ADD CONSTRAINT fk_spa_updated_by
+       FOREIGN KEY (updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL`
+    );
+  }
+  await run(
+    conn,
+    `CREATE TABLE IF NOT EXISTS spa_edit_events (
+      id BIGINT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
+      spa_id BIGINT UNSIGNED NOT NULL,
+      action ENUM('updated','photo_added','photo_removed') NOT NULL DEFAULT 'updated',
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      created_by_user_id BIGINT UNSIGNED NULL,
+      KEY idx_see_spa (spa_id, created_at),
+      CONSTRAINT fk_see_spa FOREIGN KEY (spa_id) REFERENCES spas(id) ON DELETE CASCADE,
+      CONSTRAINT fk_see_user FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
+  );
   await conn.query(
     "UPDATE spas SET published_at = created_at WHERE is_published = 1 AND published_at IS NULL"
   );

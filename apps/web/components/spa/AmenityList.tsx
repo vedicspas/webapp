@@ -1,6 +1,9 @@
 "use client";
 
 import { useMetaStore } from "@/stores/metaStore";
+import { ChipClamp } from "@/components/spa/ChipClamp";
+
+const chipClass = "rounded-full border border-veda-200 bg-white px-3 py-1 text-sm leading-5 text-veda-800";
 
 export function AmenityList({
   amenityIds,
@@ -16,23 +19,19 @@ export function AmenityList({
   if (list.length === 0 && extras.length === 0) return null;
 
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
-      {list.map((a) => (
-        <span
-          key={a.id}
-          className="rounded-full border border-veda-200 bg-white px-3 py-1 text-sm text-veda-800"
-        >
-          {a.name}
-        </span>
-      ))}
-      {extras.map((name) => (
-        <span
-          key={`other-${name.toLowerCase()}`}
-          className="rounded-full border border-veda-200 bg-white px-3 py-1 text-sm text-veda-800"
-        >
-          {name}
-        </span>
-      ))}
+    <div className="mt-2">
+      <ChipClamp>
+        {list.map((a) => (
+          <span key={a.id} className={chipClass}>
+            {a.name}
+          </span>
+        ))}
+        {extras.map((name) => (
+          <span key={`other-${name.toLowerCase()}`} className={chipClass}>
+            {name}
+          </span>
+        ))}
+      </ChipClamp>
     </div>
   );
 }

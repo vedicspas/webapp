@@ -18,9 +18,12 @@ import {
   removeFeaturedSpa,
   upsertFeaturedSpa,
 } from "../lib/featuredSpas.js";
-import { replaceSpaAmenities, replaceSpaOpenHours, saveSpaNameLists } from "../lib/spaQueries.js";
-import { saveSpaStay } from "../lib/spaStay.js";
+import { amenityIdsBySpa, replaceSpaAmenities, replaceSpaOpenHours, saveSpaNameLists } from "../lib/spaQueries.js";
+import { loadSpaStay, saveSpaStay } from "../lib/spaStay.js";
 import { appendUploadedSpaPhoto, multipartField } from "../lib/spaPhotos.js";
+import { deleteLocalPhoto, publicPhotoUrl } from "../lib/uploads.js";
+import { decodeNameList } from "../lib/nameList.js";
+import { loadSpaEditLog, recordSpaAdminEdit } from "../lib/spaEditLog.js";
 import { DUPLICATE_CLINIC_CODE, findDuplicateClinics } from "../lib/clinicDuplicate.js";
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<void> {
@@ -73,6 +76,31 @@ const clinicFilters = z.object({
 
 function allCategories() {
   return staticCache.treatmentCategories.map((c) => ({ id: c.id, name: c.name }));
+}
+
+async function loadUnclaimedSpa(spaId: number) {
+  if (!Number.isInteger(spaId) || spaId <= 0) return null;
+  return queryOne<{
+    id: number;
+    vendor_id: number | null;
+    is_published: number;
+    slug: string;
+  }>("SELECT id, vendor_id, is_published, slug FROM spas WHERE id = ?", [spaId]);
+}
+
+function rejectIfClaimed<T extends { vendor_id: number | null }>(
+  spa: T | null,
+  reply: FastifyReply
+): spa is T & { vendor_id: null } {
+  if (!spa) {
+    reply.code(404).send({ error: "Clinic not found" });
+    return false;
+  }
+  if (spa.vendor_id != null) {
+    reply.code(409).send({ error: "This clinic has been claimed. The vendor edits it from their dashboard." });
+    return false;
+  }
+  return true;
 }
 
 export async function adminRoutes(app: FastifyInstance): Promise<void> {
@@ -252,12 +280,13 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
       website: string | null;
       postal_code: string;
       created_at: Date | string;
+      updated_at: Date | string | null;
       published_at: Date | string | null;
       rating_avg: number | null;
       rating_count: number | null;
     }>(
       `SELECT s.id, s.slug, s.name, s.clinic_code, s.city_id, s.city_name, s.is_published, s.origin,
-         s.phone, s.email, s.website, s.postal_code, s.created_at, s.published_at,
+         s.phone, s.email, s.website, s.postal_code, s.created_at, s.updated_at, s.published_at,
          v.id AS vendor_id, v.business_name, v.status AS vendor_status,
          (SELECT COUNT(*) FROM spa_claims c WHERE c.spa_id = s.id AND c.status = 'pending') AS pending_claims,
          (SELECT COUNT(*) FROM spa_inquiries n WHERE n.spa_id = s.id) AS inquiry_count,
@@ -296,6 +325,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
         inquiryCount: Number(r.inquiry_count ?? 0),
         featuredOrder: r.featured_order == null ? null : Number(r.featured_order),
         createdAt: new Date(r.created_at).toISOString(),
+        updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
         publishedAt: r.published_at ? new Date(r.published_at).toISOString() : null,
         ratingAvg: Number(r.rating_avg ?? 0),
         ratingCount: Number(r.rating_count ?? 0),
@@ -994,6 +1024,67 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     confirmDuplicate: z.boolean().optional().default(false),
   });
 
+  type AdminSpaBody = z.infer<typeof adminSpaBody>;
+
+  async function adminDuplicateMatches(body: AdminSpaBody, excludeId?: number) {
+    const email = body.email?.trim() ? body.email.trim() : null;
+    const website = body.website?.trim() ? body.website.trim() : null;
+    const existing = await query<{
+      id: number;
+      slug: string;
+      name: string;
+      address_line: string;
+      city_name: string;
+      country_id: number | null;
+      postal_code: string;
+      lat: number | null;
+      lng: number | null;
+      phone: string | null;
+      email: string | null;
+      website: string | null;
+      origin: "vendor" | "admin" | "imported";
+      vendor_id: number | null;
+      is_published: number;
+    }>(
+      `SELECT id, slug, name, address_line, city_name, country_id, postal_code, lat, lng,
+              phone, email, website, origin, vendor_id, is_published
+       FROM spas`
+    );
+    return findDuplicateClinics(
+      {
+        name: body.name,
+        addressLine: body.addressLine,
+        cityName: body.cityName,
+        countryId: body.countryId ?? null,
+        postalCode: body.postalCode,
+        lat: body.lat ?? null,
+        lng: body.lng ?? null,
+        phone: body.phone ?? null,
+        email,
+        website,
+      },
+      existing
+        .filter((row) => row.id !== excludeId)
+        .map((row) => ({
+          id: row.id,
+          slug: row.slug,
+          name: row.name,
+          addressLine: row.address_line,
+          cityName: row.city_name,
+          countryId: row.country_id,
+          postalCode: row.postal_code,
+          lat: row.lat,
+          lng: row.lng,
+          phone: row.phone,
+          email: row.email,
+          website: row.website,
+          origin: row.origin,
+          vendorId: row.vendor_id,
+          isPublished: row.is_published,
+        }))
+    );
+  }
+
   app.post("/admin/spas", async (request, reply) => {
     const body = adminSpaBody.parse(request.body);
     if (body.countryId && !staticCache.country(body.countryId)) {
@@ -1012,58 +1103,7 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     const website = body.website?.trim() ? body.website.trim() : null;
 
     if (!body.confirmDuplicate) {
-      const existing = await query<{
-        id: number;
-        slug: string;
-        name: string;
-        address_line: string;
-        city_name: string;
-        country_id: number | null;
-        postal_code: string;
-        lat: number | null;
-        lng: number | null;
-        phone: string | null;
-        email: string | null;
-        website: string | null;
-        origin: "vendor" | "admin" | "imported";
-        vendor_id: number | null;
-        is_published: number;
-      }>(
-        `SELECT id, slug, name, address_line, city_name, country_id, postal_code, lat, lng,
-                phone, email, website, origin, vendor_id, is_published
-         FROM spas`
-      );
-      const matches = findDuplicateClinics(
-        {
-          name: body.name,
-          addressLine: body.addressLine,
-          cityName: body.cityName,
-          countryId: body.countryId ?? null,
-          postalCode: body.postalCode,
-          lat: body.lat ?? null,
-          lng: body.lng ?? null,
-          phone: body.phone ?? null,
-          email: email ?? null,
-          website: website ?? null,
-        },
-        existing.map((row) => ({
-          id: row.id,
-          slug: row.slug,
-          name: row.name,
-          addressLine: row.address_line,
-          cityName: row.city_name,
-          countryId: row.country_id,
-          postalCode: row.postal_code,
-          lat: row.lat,
-          lng: row.lng,
-          phone: row.phone,
-          email: row.email,
-          website: row.website,
-          origin: row.origin,
-          vendorId: row.vendor_id,
-          isPublished: row.is_published,
-        }))
-      );
+      const matches = await adminDuplicateMatches(body);
       if (matches.length > 0) {
         return reply.code(409).send({
           error: "Possible duplicate clinics",
@@ -1119,24 +1159,186 @@ export async function adminRoutes(app: FastifyInstance): Promise<void> {
     return reply.code(201).send({ id: spaId, slug, clinicCode });
   });
 
+  app.get("/admin/spas/:id", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    const spaRow = await loadUnclaimedSpa(spaId);
+    if (!rejectIfClaimed(spaRow, reply) || !spaRow) return;
+
+    const spa = await queryOne<Record<string, unknown>>(
+      `SELECT id, slug, name, clinic_code AS clinicCode, origin,
+         short_description AS shortDescription, description,
+         address_line AS addressLine, postal_code AS postalCode, country_id AS countryId, state,
+         city_name AS cityName, city_id AS cityId, lat, lng,
+         phone, email, website, is_published AS isPublished,
+         amenities_other AS amenitiesOther, treatment_names AS listedTreatmentNames,
+         updated_at AS updatedAt, updated_by_user_id AS updatedByUserId
+       FROM spas WHERE id = ?`,
+      [spaId]
+    );
+    if (!spa) return reply.code(404).send({ error: "Clinic not found" });
+
+    const updatedById = Number(spa.updatedByUserId);
+    const [hours, photos, stay, amenities, editLog, editor] = await Promise.all([
+      query<{ weekday: number; openTime: string; closeTime: string }>(
+        `SELECT weekday, TIME_FORMAT(open_time,'%H:%i') AS openTime, TIME_FORMAT(close_time,'%H:%i') AS closeTime
+         FROM spa_open_hours WHERE spa_id = ? ORDER BY weekday`,
+        [spaId]
+      ),
+      query<{ id: number; url: string; alt: string }>(
+        "SELECT id, url, alt FROM spa_photos WHERE spa_id = ? ORDER BY sort_order",
+        [spaId]
+      ),
+      loadSpaStay(spaId),
+      amenityIdsBySpa([spaId]),
+      loadSpaEditLog(spaId),
+      Number.isInteger(updatedById) && updatedById > 0
+        ? queryOne<{ name: string }>("SELECT name FROM users WHERE id = ?", [updatedById])
+        : Promise.resolve(null),
+    ]);
+
+    return {
+      id: spa.id,
+      slug: spa.slug,
+      clinicCode: spa.clinicCode,
+      origin: spa.origin,
+      name: spa.name,
+      shortDescription: spa.shortDescription,
+      description: spa.description,
+      addressLine: spa.addressLine,
+      postalCode: spa.postalCode ?? "",
+      countryId: spa.countryId == null ? null : Number(spa.countryId),
+      state: String(spa.state ?? ""),
+      cityName:
+        String(spa.cityName ?? "").trim() ||
+        staticCache.city(Number(spa.cityId) || 0)?.name ||
+        "",
+      lat: spa.lat == null ? null : Number(spa.lat),
+      lng: spa.lng == null ? null : Number(spa.lng),
+      phone: spa.phone ? String(spa.phone) : "",
+      email: spa.email ? String(spa.email) : "",
+      website: spa.website ? String(spa.website) : "",
+      isPublished: Boolean(spa.isPublished),
+      amenityIds: amenities.get(spaId) ?? [],
+      amenitiesOther: decodeNameList(spa.amenitiesOther == null ? null : String(spa.amenitiesOther)),
+      listedTreatmentNames: decodeNameList(
+        spa.listedTreatmentNames == null ? null : String(spa.listedTreatmentNames)
+      ),
+      openHours: hours,
+      photos: photos.map((p) => ({
+        id: p.id,
+        url: publicPhotoUrl(p.url) ?? p.url,
+        title: p.alt,
+      })),
+      updatedAt: spa.updatedAt ? new Date(spa.updatedAt as Date | string).toISOString() : null,
+      updatedByName: editor?.name?.trim() || null,
+      editLog,
+      ...stay,
+    };
+  });
+
+  app.put("/admin/spas/:id", async (request, reply) => {
+    const spaId = Number((request.params as { id: string }).id);
+    const spa = await loadUnclaimedSpa(spaId);
+    if (!rejectIfClaimed(spa, reply) || !spa) return;
+
+    const body = adminSpaBody.parse(request.body);
+    if (body.countryId && !staticCache.country(body.countryId)) {
+      return reply.code(400).send({ error: "Unknown country" });
+    }
+    const cityId =
+      body.countryId && body.cityName
+        ? staticCache.cities.find(
+            (c) => c.countryId === body.countryId && c.name.toLowerCase() === body.cityName.trim().toLowerCase()
+          )?.id ?? null
+        : null;
+    const email = body.email?.trim() ? body.email.trim() : null;
+    const website = body.website?.trim() ? body.website.trim() : null;
+
+    if (!body.confirmDuplicate) {
+      const matches = await adminDuplicateMatches(body, spaId);
+      if (matches.length > 0) {
+        return reply.code(409).send({
+          error: "Possible duplicate clinics",
+          code: DUPLICATE_CLINIC_CODE,
+          matches,
+        });
+      }
+    }
+
+    const result = await execute(
+      `UPDATE spas SET name=?, short_description=?, description=?, address_line=?, postal_code=?,
+         country_id=?, state=?, city_name=?, city_id=?, lat=?, lng=?, phone=?, email=?, website=?,
+         is_published=?,
+         published_at=IF(? = 1 AND is_published = 0, UTC_TIMESTAMP(), published_at)
+       WHERE id = ? AND vendor_id IS NULL`,
+      [
+        body.name,
+        body.shortDescription,
+        body.description,
+        body.addressLine,
+        body.postalCode ?? "",
+        body.countryId ?? null,
+        body.state ?? "",
+        body.cityName ?? "",
+        cityId,
+        body.lat ?? null,
+        body.lng ?? null,
+        body.phone?.trim() || null,
+        email,
+        website,
+        body.isPublished ? 1 : 0,
+        body.isPublished ? 1 : 0,
+        spaId,
+      ]
+    );
+    if (result.affectedRows === 0) return reply.code(404).send({ error: "Clinic not found" });
+
+    await saveSpaStay(spaId, body);
+    await replaceSpaAmenities(spaId, body.amenityIds);
+    await saveSpaNameLists(spaId, {
+      amenitiesOther: body.amenitiesOther,
+      treatmentNames: body.treatmentNames,
+    });
+    await replaceSpaOpenHours(spaId, body.openHours);
+    await recordSpaAdminEdit(spaId, request.user!.id, "updated");
+    return { ok: true, slug: spa.slug };
+  });
+
   app.post("/admin/spas/:id/photos", async (request, reply) => {
     const spaId = Number((request.params as { id: string }).id);
-    if (!Number.isInteger(spaId) || spaId <= 0) {
-      return reply.code(400).send({ error: "Invalid clinic" });
-    }
-    const spa = await queryOne<{ id: number }>("SELECT id FROM spas WHERE id = ?", [spaId]);
-    if (!spa) return reply.code(404).send({ error: "Clinic not found" });
+    const spa = await loadUnclaimedSpa(spaId);
+    if (!rejectIfClaimed(spa, reply) || !spa) return;
     const file = await request.file();
     if (!file) return reply.code(400).send({ error: "Choose an image file to upload" });
     const buffer = await file.toBuffer();
     const title = multipartField(file, ["title", "alt"]).slice(0, 200);
     try {
       const saved = await appendUploadedSpaPhoto(spaId, buffer, file.mimetype, title);
+      await recordSpaAdminEdit(spaId, request.user!.id, "photo_added");
       return reply.code(201).send(saved);
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode ?? 400;
       return reply.code(status).send({ error: (err as Error).message });
     }
+  });
+
+  app.delete("/admin/photos/:photoId", async (request, reply) => {
+    const photoId = Number((request.params as { photoId: string }).photoId);
+    if (!Number.isInteger(photoId) || photoId <= 0) {
+      return reply.code(400).send({ error: "Invalid photo" });
+    }
+    const row = await queryOne<{ url: string; spa_id: number; vendor_id: number | null }>(
+      `SELECT p.url, p.spa_id, s.vendor_id
+       FROM spa_photos p JOIN spas s ON s.id = p.spa_id
+       WHERE p.id = ?`,
+      [photoId]
+    );
+    if (!row) return reply.code(404).send({ error: "Photo not found" });
+    if (!rejectIfClaimed({ vendor_id: row.vendor_id }, reply)) return;
+    await execute("DELETE FROM spa_photos WHERE id = ?", [photoId]);
+    await deleteLocalPhoto(row.url);
+    await recordSpaAdminEdit(row.spa_id, request.user!.id, "photo_removed");
+    return { ok: true };
   });
 
   app.get("/admin/spas/:id/featured", async (request, reply) => {

@@ -31,6 +31,7 @@ export interface AdminSpa {
   inquiryCount: number;
   featuredOrder: number | null;
   createdAt: string;
+  updatedAt: string | null;
   publishedAt: string | null;
   ratingAvg: number;
   ratingCount: number;
@@ -156,6 +157,12 @@ export function AdminClinicRow({
         ) : null}
         <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm text-foreground/65">
           <span>Created {shortDate(spa.createdAt)}</span>
+          {spa.updatedAt ? (
+            <>
+              <span aria-hidden>·</span>
+              <span>Edited {shortDate(spa.updatedAt)}</span>
+            </>
+          ) : null}
           <span aria-hidden>·</span>
           <span>{spa.publishedAt ? `Published ${shortDate(spa.publishedAt)}` : "Not published"}</span>
           <span aria-hidden>·</span>
@@ -166,6 +173,14 @@ export function AdminClinicRow({
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
+        {spa.isUnclaimed ? (
+          <Link
+            href={`/admin/spas/${spa.id}`}
+            className="rounded-full border border-veda-300 px-4 py-1.5 text-sm text-veda-800 hover:bg-veda-50"
+          >
+            Edit
+          </Link>
+        ) : null}
         {spa.featuredOrder != null ? (
           <button
             type="button"
